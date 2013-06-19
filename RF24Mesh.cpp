@@ -47,6 +47,7 @@ void RF24Mesh::begin(uint8_t _channel, T_IP _node_address )
   // Set up the radio the way we want it to look
   radio.setChannel(_channel);
   radio.setDataRate(RF24_1MBPS);
+  radio.setPALevel(RF24_PA_LOW);
   radio.setCRCLength(RF24_CRC_16);
   radio.setRetries(5,15);
 
@@ -167,7 +168,9 @@ void RF24Mesh::listenRadio(bool waitJoinAck)
 		  {
 			  printf_P(PSTR("%lu: MAC Received message **NOT for me**, forwarding %d != %d \n\r"), millis(), header.to_node, rTable.getCurrentNode().ip);
 				// Relay it
-				write(rTable.getMac(header.to_node));
+			  uint64_t mac = rTable.getMac(header.to_node);
+			  if(mac != 0)
+				write(mac);
 		  }
 			
 		  handlePacket();
@@ -372,8 +375,7 @@ bool RF24Mesh::send_JoinMessage()
 	RF24NetworkHeader header(rTable.getBroadcastNode().ip, 'J');
   
 	header.join_data = rTable.getCurrentNode();
-	printf_P(PSTR("%lu:Sending join message to ip:%d  as my ip:%d and mymac:%lu --------\n\r"),millis(),header.to_node,header.join_data.ip, header.join_data.mac);
-  //printf_P(PSTR("%lu: APP Sending %lu to %lu...\n\r"),millis(),message.ip,message.mac);
+	printf_P(PSTR("%lu:Sending join message to ip:%d  as my ip:%d and mymac:%lu myweight:%d --------\n\r"),millis(),header.to_node,header.join_data.ip, header.join_data.mac, header.join_data.weight);
   return write(header,0,0);
 }
 
@@ -385,7 +387,7 @@ bool RF24Mesh::send_WelcomeMessage(IP_MAC toNode)
 	//IP_MAC message = rTable.getCurrentNode();
 	header.join_data = rTable.getCurrentNode();
   printf_P(PSTR("---------------------------------\n\r"));
-  printf_P(PSTR("%lu: APP Sending Welcome Message to ip: %d as my ip: %d and my mac: %lu...\n\r"),millis(),header.to_node,header.join_data.ip,header.join_data.mac);
+  printf_P(PSTR("%lu: APP Sending Welcome Message to ip: %d as my ip: %d and my mac: %lu my weight:%d...\n\r"),millis(),header.to_node,header.join_data.ip,header.join_data.mac, header.join_data.weight);
   return write(header,0,0);
 }
 
@@ -467,15 +469,16 @@ void RF24Mesh::handle_J(RF24NetworkHeader& header)
 void RF24Mesh::handle_WelcomeMessage(RF24NetworkHeader& header)
 {
   // The 'W' message is just a ulong, containing the time
-  IP_MAC message;
-  read(header,&message,sizeof(IP_MAC));
-  printf_P(PSTR("%lu: handle_WelcomeMessage (%s) APP Received ip %d mac %lu\n\r"),millis(),header.toString(),message.ip,message.mac);
+  //IP_MAC message;
+  read(header,0,0);
+  printf_P(PSTR("%lu: handle_WelcomeMessage (%s) APP Received ip %d mac %lu weight:%d \n\r"),millis(),header.toString(),header.join_data.ip,header.join_data.mac,header.join_data.weight);
 
   last_join_time = millis();
   // If this message is from ourselves or the base, don't bother adding it to the active nodes.
   if ( header.from_node != this->node_address || header.from_node > 00 )
-	  if(rTable.addNearNode(message))
+	  if(rTable.addNearNode(header.join_data))
 	  {
+		   printf_P(PSTR("%lu: handle_WelcomeMessage, update join status"),millis());
 		  send_JoinMessage();
 	  }
 }

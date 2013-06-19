@@ -12,7 +12,7 @@ typedef struct
 {
 	T_IP ip;
 	T_MAC mac;
-	uint16_t weight;
+	uint8_t weight;
 }IP_MAC,*P_IP_MAC;
 
 #define MAX_NEAR_NODE 10

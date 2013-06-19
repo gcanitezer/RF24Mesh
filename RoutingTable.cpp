@@ -1,19 +1,19 @@
 #include "RoutingTable.h"
 #include "RF24Network_config.h"
 
-const IP_MAC BROADCAST_ADDRESS = {0x7918, 0xE8E8E8E8E8LL, 0};
+const IP_MAC BROADCAST_ADDRESS = {0x7918, 0xE8E8E8E8LL, 0};
 
-const IP_MAC MASTER_SYNC_ADDRESS = {0x0000, 0xD7D7D7D7D7LL, 0};
+const IP_MAC MASTER_SYNC_ADDRESS = {0x0000, 0xD7D7D7D7LL, 0};
 
-const T_MAC base_address = 0xC5C5C50000LL;
+const T_MAC base_address = 0xC5C50000LL;
 
 
 RoutingTable::RoutingTable(void)
 {
 	tableCount = 0;
-	myNode.weight = 0xFF;
+	myNode.weight = 125;
 	iAmMaster=false;
-	shortestPath = 0xFF;
+	shortestPath = 125;
 	printf_P(PSTR("Created new routing table"));
 }
 
@@ -47,14 +47,18 @@ void RoutingTable::setCurrentNode(T_IP myIP)
 	{
 		this->myNode = MASTER_SYNC_ADDRESS;
 		iAmMaster = true;
-		printf_P(PSTR("%lu:SetCurrent This is master node ip:%d, mac:%lu \n\r"),millis(),myNode.ip, myNode.mac);
+		printf_P(PSTR("%lu:SetCurrent This is master node ip:%d, mac:%lu weight:%02x\n\r"),millis(),myNode.ip, myNode.mac, myNode.weight);
 	}
 	else
 	{
-		myNode.ip = myIP;
-		myNode.mac = base_address | myIP;
-		myNode.weight = 0xFF;
-		printf_P(PSTR("%lu: SetCurrent MyNode IP:%d mac: %lu \n\r"),millis(),myNode.ip,myNode.mac );
+		this->myNode.ip = myIP;
+		this->myNode.mac = base_address | myIP;
+		this->myNode.weight = 125;
+		printf_P(PSTR("%lu: SetCurrent3 MyNode IP:%d mac: %lu weight:%02x \n\r"),millis(),myNode.ip,myNode.mac, this->myNode.weight );
+		if(this->myNode.weight == 125)
+		{
+			printf_P(PSTR("%lu: SetCurrent4 it is 0 MyNode IP:%d mac: %lu weight:%x \n\r"),millis(),myNode.ip,myNode.mac, this->myNode.weight );
+		}
 	}
 	
 }
@@ -62,7 +66,7 @@ void RoutingTable::setCurrentNode(T_IP myIP)
 bool RoutingTable::addNearNode(IP_MAC nearNode)
 {
 	bool result = false;
-	printf_P(PSTR("%lu: addNearNode IP:%d mac: %lu weight:%d \n\r"),millis(),nearNode.ip,nearNode.mac,nearNode.weight );
+	printf_P(PSTR("%lu: addNearNode IP:%d mac: %lu weight:%d myweight:%d\n\r"),millis(),nearNode.ip,nearNode.mac,nearNode.weight,myNode.weight );
 	if(nearNode.weight < myNode.weight)
 	{
 		myNode.weight = nearNode.weight + 1;
@@ -75,7 +79,7 @@ bool RoutingTable::addNearNode(IP_MAC nearNode)
 		table[tableCount] = nearNode;
 	}
 
-	if(tableCount != MAX_NEAR_NODE)
+	if(tableCount < MAX_NEAR_NODE-1)
 	{			
 		tableCount++;
 	}
@@ -97,14 +101,17 @@ IP_MAC RoutingTable::getShortestRouteNode()
 
 void RoutingTable::cleanTable()
 {
-	tableCount = 0;
-	myNode.weight = 0xFF;
-	shortestPath = 0xFF;
+	if(!amImaster())
+	{
+		tableCount = 0;
+		myNode.weight = 125;
+		shortestPath = 125;
+	}
 }
 
 bool RoutingTable::amIJoinedNetwork()
 {
-	if(shortestPath == 0xFF)
+	if(shortestPath == 125)
 		return false;
 	else 
 		return true;
