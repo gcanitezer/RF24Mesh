@@ -12,7 +12,7 @@ typedef struct
 {
 	T_IP ip;
 	T_MAC mac;
-	uint8_t weight;
+	uint16_t weight;
 }IP_MAC,*P_IP_MAC;
 
 #define MAX_NEAR_NODE 10
@@ -42,6 +42,8 @@ public:
 	IP_MAC getShortestRouteNode();
 	int getTableSize();
 	void* getTable();
+	void printTable();
+	int8_t checkTable(T_IP ip);
 	T_MAC getMac(T_IP ip);
 	T_MAC getShortestMac(T_IP ip);
 

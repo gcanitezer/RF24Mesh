@@ -1,0 +1,18 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<VisualStudioToolFile
+	Name="New Rule File"
+	Version="8.00"
+	>
+	<Rules>
+		<CustomBuildRule
+			Name="cxxtestgen"
+			DisplayName="cxxtestgen"
+			CommandLine="C:\Users\altan\Desktop\arduinoIDE\cxxtest-4.2\bin\cxxtestgen.bat  --error-printer -o runner.cpp MyTestSuite1.h"
+			Outputs="runner.cpp"
+			FileExtensions="*.cpp"
+			>
+			<Properties>
+			</Properties>
+		</CustomBuildRule>
+	</Rules>
+</VisualStudioToolFile>

@@ -60,6 +60,7 @@ uint16_t this_node;
 
 long message_no = 0;
 
+
 void setup(void)
 {
   //
@@ -68,7 +69,7 @@ void setup(void)
   
   Serial.begin(57600);
   printf_begin();
-  printf_P(PSTR("\n\rRF24Mesh/examples/sensorstack_pde/\n\r"));
+  printf_P(PSTR("\n\rRF24Mesh/examples/sensorstack_root/\n\r"));
   printf_P(PSTR("VERSION: %s\n\r"),program_version);
   
   //
@@ -76,7 +77,7 @@ void setup(void)
   //
 
   // Which node are we?
-  this_node = nodeconfig_read();
+  this_node = 0; //root,sync node
 
   //
   // Bring up the RF network
@@ -91,10 +92,7 @@ void loop(void)
 {
   // Pump the network regularly
   network.loop();
-  if (this_node != 0 && network.isJoined() && millis()%1000 == 0)
-  network.send_SensorData(message_no++);
-  
-  
+    
 }
 
 

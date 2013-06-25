@@ -59,7 +59,7 @@ struct RF24NetworkHeader
    * @param _type The type of message which follows.  Only 0-127 are allowed for
    * user messages.
    */
-  RF24NetworkHeader(uint16_t _to, unsigned char _type = 0, uint64_t _data = 0): to_node(_to), payload(_data),id(next_id++), type(_type&0x7f) {}
+  RF24NetworkHeader(uint16_t _to, unsigned char _type = 0, uint64_t _data = 0, uint16_t _from = 0): to_node(_to), payload(_data),id(next_id++), type(_type&0x7f), from_node(_from) {}
 
   /**
    * Create debugging string
@@ -209,6 +209,7 @@ protected:
   void open_pipes(void);
   uint16_t find_node( uint16_t current_node, uint16_t target_node );
   bool write(T_MAC);
+  bool write(RF24NetworkHeader& header, T_MAC mac);
   bool write_to_pipe( uint16_t node, uint8_t pipe );
   bool enqueue(void);
 

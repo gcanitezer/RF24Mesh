@@ -1,0 +1,8 @@
+# This file is Jamfile.jam.
+SubDir TOP ;
+IncludeDirectories unit_test : "C:/Users/altan/Desktop/arduinoIDE/cxxtest-4.2" ;
+IncludeDirectories unit_test : "C:\Users\altan\Desktop\arduinoIDE\arduino-1.0.1\libraries\RF24Mesh";
+IncludeDirectories unit_test : "C:\Users\altan\Desktop\arduinoIDE\arduino-1.0.1\libraries\RF24";
+
+
+Application unit_test : runner.cpp ;

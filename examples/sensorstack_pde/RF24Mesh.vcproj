@@ -109,6 +109,7 @@
 			/>
 			<Tool
 				Name="VCCLCompilerTool"
+				AdditionalIncludeDirectories="&quot;C:\Users\altan\Desktop\arduinoIDE\arduino-1.0.1\hardware\tools\avr\lib\gcc\avr\4.3.2\include&quot;"
 				PreprocessorDefinitions="WIN32;NDEBUG;_CONSOLE;"
 				RuntimeLibrary="2"
 				UsePrecompiledHeader="0"
@@ -282,11 +283,11 @@
 				>
 			</File>
 			<File
-				RelativePath="..\..\tests\unit\main.cpp"
+				RelativePath="..\..\..\rf24\examples\pingpair_maple\main.cpp"
 				>
 			</File>
 			<File
-				RelativePath="..\..\..\rf24\examples\pingpair_maple\main.cpp"
+				RelativePath="..\..\tests\unit\main.cpp"
 				>
 			</File>
 			<File

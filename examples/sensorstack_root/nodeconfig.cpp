@@ -24,10 +24,7 @@ const uint16_t node_address_set[10] = { 00, 02, 05, 012, 015, 022, 025, 032, 035
 uint8_t nodeconfig_read(void)
 {
   uint8_t result = 0;
-  
-  randomSeed(analogRead(0));
-  result = node_address_set[random(9)];
-  
+result = millis()%1000;
   return result;
   // Look for the token in EEPROM to indicate the following value is
   // a validly set node address 

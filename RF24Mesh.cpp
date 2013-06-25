@@ -267,6 +267,25 @@ size_t RF24Mesh::read(RF24NetworkHeader& header,void* message, size_t maxlen)
   return bufsize;
 }
 
+bool RF24Mesh::write(RF24NetworkHeader& header, T_MAC mac)
+{
+  // Fill out the header
+//	header.from_node = rTable.getCurrentNode().ip;
+	
+	printf_P(PSTR("%lu: NET Sending message(%s) \n\r"),millis(),header.toString());
+
+  // Build the full frame to send
+  memcpy(frame_buffer,&header,sizeof(RF24NetworkHeader));
+
+  // If the user is trying to send it to himself
+  if ( header.to_node == rTable.getCurrentNode().ip )
+    // Just queue it in the received queue
+    return enqueue();
+  else
+    // Otherwise send it out over the air
+	return write(mac);
+}
+
 /******************************************************************/
 
 bool RF24Mesh::write(RF24NetworkHeader& header,const void* message, size_t len)
@@ -322,9 +341,6 @@ bool RF24Mesh::write(T_MAC to_mac)
   if(!ok)
 	  callback.sendingFailed(to_mac);
 
-
-
-
   return ok;
 }
 
@@ -372,23 +388,23 @@ bool RF24Mesh::is_valid_address( uint16_t node )
  */
 bool RF24Mesh::send_JoinMessage()
 {
-	RF24NetworkHeader header(rTable.getBroadcastNode().ip, 'J');
+	RF24NetworkHeader header(rTable.getBroadcastNode().ip, 'J', 0, rTable.getCurrentNode().ip);
   
 	header.join_data = rTable.getCurrentNode();
-	printf_P(PSTR("%lu:Sending join message to ip:%d  as my ip:%d and mymac:%lu myweight:%d --------\n\r"),millis(),header.to_node,header.join_data.ip, header.join_data.mac, header.join_data.weight);
-  return write(header,0,0);
+	printf_P(PSTR("%lu:Sending join message to ip:%d  as my ip:%d and mymac:%lu myweight:%lu --------\n\r"),millis(),header.to_node,header.join_data.ip, header.join_data.mac, header.join_data.weight);
+  return write(header,rTable.getBroadcastNode().mac);
 }
 
 bool RF24Mesh::send_WelcomeMessage(IP_MAC toNode)
 {
-	RF24NetworkHeader header(toNode.ip, 'W');
+	RF24NetworkHeader header(toNode.ip, 'W',0, rTable.getCurrentNode().ip);
   
   // The 'T' message that we send is just a ulong, containing the time
 	//IP_MAC message = rTable.getCurrentNode();
 	header.join_data = rTable.getCurrentNode();
   printf_P(PSTR("---------------------------------\n\r"));
-  printf_P(PSTR("%lu: APP Sending Welcome Message to ip: %d as my ip: %d and my mac: %lu my weight:%d...\n\r"),millis(),header.to_node,header.join_data.ip,header.join_data.mac, header.join_data.weight);
-  return write(header,0,0);
+  printf_P(PSTR("%lu: APP Sending Welcome Message to ip: %d as my ip: %d and my mac: %lu my weight:%lu...\n\r"),millis(),header.to_node,header.join_data.ip,header.join_data.mac, header.join_data.weight);
+  return write(header,toNode.mac);
 }
 
 /**
@@ -459,6 +475,7 @@ void RF24Mesh::handle_J(RF24NetworkHeader& header)
 	  rTable.addNearNode(header.join_data);
 	  send_WelcomeMessage(header.join_data);
   }
+  rTable.printTable();
 }
 
 /**
@@ -481,6 +498,8 @@ void RF24Mesh::handle_WelcomeMessage(RF24NetworkHeader& header)
 		   printf_P(PSTR("%lu: handle_WelcomeMessage, update join status"),millis());
 		  send_JoinMessage();
 	  }
+
+   rTable.printTable();
 }
 
 /**
