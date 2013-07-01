@@ -15,11 +15,25 @@ RoutingTable::RoutingTable(void)
 	myNode.weight = MAX_WEIGHT;
 	iAmMaster=false;
 	shortestPath = MAX_WEIGHT;
+	millis_delta = 0;
 	printf_P(PSTR("Created new routing table"));
 }
 
 RoutingTable::~RoutingTable(void)
 {
+}
+
+
+void RoutingTable::setMillis(uint64_t data)
+{
+	unsigned long a =  data;
+	millis_delta = millis() - a;
+
+	printf_P(PSTR("SetMillis called: data:%lu delta:%l \n\r"),a,millis_delta);
+}
+unsigned long RoutingTable::getMillis()
+{
+	return millis() + millis_delta;
 }
 
 IP_MAC RoutingTable::getMasterNode()
@@ -112,6 +126,40 @@ bool RoutingTable::addNearNode(IP_MAC nearNode)
 		tableCount--;
 	}
 	return result;
+}
+int8_t RoutingTable::getShortestNodePosition()
+{
+	uint8_t result = MAX_WEIGHT;
+    int8_t pos = MAX_WEIGHT;
+
+	for(int i=0;i<tableCount;i++)
+	{
+		if(table[i].weight<result)
+		{	
+			result = table[i].weight;
+			pos = i;
+		}
+	}
+	return pos;
+}
+
+void RoutingTable::removeUnreacheable(IP_MAC nearNode)
+{
+	int8_t position = checkTable(nearNode.ip);
+	
+	printf_P(PSTR("%lu: removeUnreacheable IP:%d mac: %lu weight:%lu myweight:%lu \n\r"),millis(),nearNode.ip,nearNode.mac,nearNode.weight,myNode.weight );
+	
+	for(int i=position;i<tableCount;i++)
+	{
+		table[i] = table[i+1];
+	}
+	tableCount--;
+	
+	printf_P(PSTR("%lu: removeUnreacheable shortestPath == position IP:%d position:%d \n\r"),millis(),nearNode.ip, position );
+	position = getShortestNodePosition();
+	if(position == MAX_WEIGHT)
+		cleanTable();
+	
 }
 void RoutingTable::addReacheableNode(T_IP nearNodeID, T_IP* reachableNodeID, int numOfReacheableNodes)
 {

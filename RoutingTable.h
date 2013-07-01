@@ -25,6 +25,7 @@ private:
 	uint8_t tableCount;
 	uint8_t shortestPath;
 	bool iAmMaster;
+	long millis_delta;
 public:
 	RoutingTable(void);
 	~RoutingTable(void);
@@ -46,6 +47,9 @@ public:
 	int8_t checkTable(T_IP ip);
 	T_MAC getMac(T_IP ip);
 	T_MAC getShortestMac(T_IP ip);
-
+	void setMillis(uint64_t data);
+	unsigned long getMillis();
+	void removeUnreacheable(IP_MAC nearNode);
+	int8_t getShortestNodePosition();
 };
 #endif //__ROUTINGTABLE_H__
