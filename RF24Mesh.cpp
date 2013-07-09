@@ -352,8 +352,12 @@ bool RF24Mesh::write(T_MAC to_mac)
 
 const char* RF24NetworkHeader::toString(void) const
 {
+  uint32_t p1;
+  uint32_t p2;
+  memcpy(&p1, &payload,4);
+  memcpy(&p2, &payload + 4,4);
   static char buffer[125];
-  snprintf_P(buffer,sizeof(buffer),PSTR(" msg_id %04x from ip 0%d to ip 0%d type %c data %lx ip_data_ip:%u ipdata_weight:%u "),id,from_node,to_node,type, payload, ip_data.ip, ip_data.weight);
+  snprintf_P(buffer,sizeof(buffer),PSTR(" msg_id %04x from ip 0%d to ip 0%d type %c data %lx %lx ip_data_ip:%x ipdata_weight:%x "),id,from_node,to_node,type, p1,p2, ip_data.ip, ip_data.weight);
   return buffer;
 }
 
@@ -399,7 +403,11 @@ bool RF24Mesh::send_JoinMessage()
 
 bool RF24Mesh::send_WelcomeMessage(IP_MAC toNode)
 {
-	RF24NetworkHeader header(toNode.ip, 'W',rTable.getMillis(), rTable.getCurrentNode().ip);
+	unsigned long time = rTable.getMillis();
+	uint64_t payload;
+	memset(&payload,0,8);
+	memcpy(&payload+4,&time,4);
+	RF24NetworkHeader header(toNode.ip, 'W',payload , rTable.getCurrentNode().ip);
 	header.ip_data.ip = rTable.getCurrentNode().ip;
 	header.ip_data.weight = rTable.getCurrentNode().weight;
   

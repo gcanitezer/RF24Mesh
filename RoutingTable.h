@@ -24,7 +24,7 @@ private:
 	uint8_t tableCount;
 	uint8_t shortestPath;
 	bool iAmMaster;
-	long millis_delta;
+	unsigned long millis_delta;
 public:
 	RoutingTable(void);
 	~RoutingTable(void);

@@ -26,10 +26,12 @@ RoutingTable::~RoutingTable(void)
 
 void RoutingTable::setMillis(uint64_t data)
 {
-	unsigned long a =  data;
+	unsigned long a;
+	memcpy(&a,&data + 4, 4);
+	//unsigned long a =  data;
 	millis_delta = millis() - a;
 
-	printf_P(PSTR("SetMillis called: data:%lu delta:%l \n\r"),a,millis_delta);
+	printf_P(PSTR("SetMillis called: a:%lx delta:%lx \n\r"),a,millis_delta);
 }
 unsigned long RoutingTable::getMillis()
 {
