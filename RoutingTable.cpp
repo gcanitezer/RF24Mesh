@@ -1,11 +1,11 @@
 #include "RoutingTable.h"
 #include "RF24Network_config.h"
 
-const IP_MAC BROADCAST_ADDRESS = {0x7918, 0xE8E8E8E8LL, 0};
+const IP_MAC BROADCAST_ADDRESS = {0x7918,  0};
 
-const IP_MAC MASTER_SYNC_ADDRESS = {0x0000, 0xD7D7D7D7LL, 0};
+const IP_MAC MASTER_SYNC_ADDRESS = {0x0000,  0};
 
-const T_MAC base_address = 0xC5C50000LL;
+const T_MAC base_address = 0xE8E8E8E8LL;
 
 const uint8_t MAX_WEIGHT = 255;
 
@@ -51,7 +51,7 @@ IP_MAC RoutingTable::getBroadcastNode()
 
 IP_MAC RoutingTable::getCurrentNode()
 {
-	//printf_P(PSTR("%lu: getCurrentNode IP:%u mac: %lu \n\r"),millis(), myNode.ip, myNode.mac);
+	printf_P(PSTR("%lu: getCurrentNode IP:%u weight: %u \n\r"),millis(), myNode.ip, myNode.weight);
 	return myNode;
 }
 
@@ -65,17 +65,16 @@ void RoutingTable::setCurrentNode(T_IP myIP)
 	{
 		this->myNode = MASTER_SYNC_ADDRESS;
 		iAmMaster = true;
-		printf_P(PSTR("%lu:SetCurrent This is master node ip:%u, mac:%lu weight:%02x\n\r"),millis(),myNode.ip, myNode.mac, myNode.weight);
+		printf_P(PSTR("%lu:SetCurrent This is master node ip:%u,  weight:%02x\n\r"),millis(),myNode.ip,  myNode.weight);
 	}
 	else
 	{
 		this->myNode.ip = myIP;
-		this->myNode.mac = base_address | myIP;
 		this->myNode.weight = MAX_WEIGHT;
-		printf_P(PSTR("%lu: SetCurrent3 MyNode IP:%d mac: %lu weight:%u \n\r"),millis(),myNode.ip,myNode.mac, this->myNode.weight );
+		printf_P(PSTR("%lu: SetCurrent3 MyNode IP:%d  weight:%u \n\r"),millis(),myNode.ip, this->myNode.weight );
 		if(this->myNode.weight == MAX_WEIGHT)
 		{
-			printf_P(PSTR("%lu: SetCurrent4 it is 0 MyNode IP:%d mac: %lu weight:%u \n\r"),millis(),myNode.ip,myNode.mac, this->myNode.weight );
+			printf_P(PSTR("%lu: SetCurrent4 it is 0 MyNode IP:%d  weight:%u \n\r"),millis(),myNode.ip, this->myNode.weight );
 		}
 	}
 	
@@ -95,7 +94,7 @@ bool RoutingTable::addNearNode(IP_MAC nearNode)
 	bool result = false;
 	int8_t position = checkTable(nearNode.ip);
 	
-	printf_P(PSTR("%lu: addNearNode IP:%d mac: %lu weight:%lu myweight:%lu \n\r"),millis(),nearNode.ip,nearNode.mac,nearNode.weight,myNode.weight );
+	printf_P(PSTR("%lu: addNearNode IP:%d weight:0%d myweight:0%d \n\r"),millis(),nearNode.ip,nearNode.weight,myNode.weight );
 	if(nearNode.weight + 1 < myNode.weight)
 	{
 		printf_P(PSTR("%lu: addNearNode IP:%d position:%d \n\r"),millis(),nearNode.ip, position );
@@ -143,11 +142,11 @@ int8_t RoutingTable::getShortestNodePosition()
 	return pos;
 }
 
-void RoutingTable::removeUnreacheable(IP_MAC nearNode)
+bool RoutingTable::removeUnreacheable(IP_MAC nearNode)
 {
 	int8_t position = checkTable(nearNode.ip);
 	
-	printf_P(PSTR("%lu: removeUnreacheable IP:%d mac: %lu weight:%lu myweight:%lu \n\r"),millis(),nearNode.ip,nearNode.mac,nearNode.weight,myNode.weight );
+	printf_P(PSTR("%lu: removeUnreacheable IP:%d weight:%lu myweight:%lu \n\r"),millis(),nearNode.ip,nearNode.weight,myNode.weight );
 	
 	for(int i=position;i<tableCount;i++)
 	{
@@ -155,11 +154,17 @@ void RoutingTable::removeUnreacheable(IP_MAC nearNode)
 	}
 	tableCount--;
 	
+	if(tableCount == -1)
+	{
+		return false;
+	}
+
 	printf_P(PSTR("%lu: removeUnreacheable shortestPath == position IP:%d position:%d \n\r"),millis(),nearNode.ip, position );
 	position = getShortestNodePosition();
 	if(position == MAX_WEIGHT)
 		cleanTable();
-	
+
+	return true;
 }
 void RoutingTable::addReacheableNode(T_IP nearNodeID, T_IP* reachableNodeID, int numOfReacheableNodes)
 {
@@ -211,7 +216,7 @@ void RoutingTable::printTable()
 	printf_P(PSTR("----JOINED TABLE---------\n\r"));
 	for(int i=0;i<tableCount;i++)
 	{
-		printf_P(PSTR("ip:%u mac:%lu weight:%u\n\r"),table[i].ip, table[i].mac, table[i].weight); 
+		printf_P(PSTR("ip:%u  weight:%u\n\r"),table[i].ip,  table[i].weight); 
 	}
 	printf_P(PSTR("----END OF JOINED TABLE---------\n\r"));
 }
@@ -219,7 +224,7 @@ void RoutingTable::printTable()
 T_MAC RoutingTable::getMac(T_IP ip)
 {
 	T_MAC result=0;
-
+/*
 	if(ip == BROADCAST_ADDRESS.ip)
 		result = BROADCAST_ADDRESS.mac;
 	else if(ip == MASTER_SYNC_ADDRESS.ip)
@@ -233,7 +238,10 @@ T_MAC RoutingTable::getMac(T_IP ip)
 		}
 	
 	if(result == 0)
-	printf_P(PSTR("%lu: ----WARNING--- getMac called for IP: %u mac: %lu\n\r"), millis(),ip,result);
+	   printf_P(PSTR("%lu: ----WARNING--- getMac called for IP: %u mac: %lu\n\r"), millis(),ip,result);
+*/	
+	result = base_address;
+
 	return result;
 }
 
@@ -245,7 +253,7 @@ T_MAC RoutingTable::getShortestMac(T_IP ip)
 	{
 		printf_P(PSTR("%lu: *********DONT CALLME********I AM MASTER********getShortestMac ip:%u \r\n"), millis(),ip);
 	}
-	
+	/*
 	for(int i=0;i<tableCount;i++)
 	{
 		if(ip == table[i].ip)
@@ -262,5 +270,10 @@ T_MAC RoutingTable::getShortestMac(T_IP ip)
 		
 	if(result == 0)
 		printf_P(PSTR("%lu: ----WARNING--- getShortestMac called for IP: %u mac: %lu\n\r"), millis(),ip,result);
+	*/
+
+
+	result = base_address;
+
 	return result;
 }

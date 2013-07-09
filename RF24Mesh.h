@@ -32,7 +32,7 @@ struct RF24NetworkHeader
   uint16_t to_node; /**< Logical address where the message is going */
   uint16_t id; /**< Sequential message ID, incremented every message */
   uint64_t payload;
-  IP_MAC join_data;
+  IP_MAC ip_data; //it is used as ip and weight info for join data; original ip and hop count for sensor data
   unsigned char type; /**< Type of the packet.  0-127 are user-defined types, 128-255 are reserved for system */
   unsigned char reserved; /**< Reserved for future use */
 
@@ -192,6 +192,7 @@ void handle_WelcomeMessage(RF24NetworkHeader& header);
  * Handle an 'N' message, the active node list
  */
 void handle_DataMessage(RF24NetworkHeader& header);
+void handle_ForwardData(RF24NetworkHeader& header);
 
 void handle_J(RF24NetworkHeader& header);
 

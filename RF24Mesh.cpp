@@ -54,8 +54,8 @@ void RF24Mesh::begin(uint8_t _channel, T_IP _node_address )
   radio.setRetries(5,15);
 
 
-  radio.openReadingPipe(0, rTable.getBroadcastNode().mac);
-  radio.openReadingPipe(1, rTable.getCurrentNode().mac);
+  radio.openReadingPipe(0, rTable.getMac(0));
+  //radio.openReadingPipe(1, rTable.getCurrentNode().mac);
   
   radio.startListening();
 
@@ -102,6 +102,8 @@ void RF24Mesh::handlePacket()
     case 'D':
       handle_DataMessage(header);
       break;
+	case 'F':
+	  handle_ForwardData(header);
     default:
 	  printf_P(PSTR("*** WARNING *** Unknown message type %s\n\r"),header.toString());
       read(header,0,0);
@@ -167,11 +169,11 @@ void RF24Mesh::listenRadio(bool waitJoinAck)
 		  }
 		  else
 		  {
-			  printf_P(PSTR("%lu: MAC Received message **NOT for me**, forwarding %d != %d \n\r"), rTable.getMillis(), header.to_node, rTable.getCurrentNode().ip);
+			  printf_P(PSTR("%lu: MAC Received message *****NOT for me**, *WARNING* wrong message not forwarding %d != %d \n\r"), rTable.getMillis(), header.to_node, rTable.getCurrentNode().ip);
 				// Relay it
-			  uint64_t mac = rTable.getMac(header.to_node);
-			  if(mac != 0)
-				write(mac);
+	//		  uint64_t mac = rTable.getMac(header.to_node);
+	//		  if(mac != 0)
+	//			write(mac);
 		  }
 			
 		  
@@ -350,8 +352,8 @@ bool RF24Mesh::write(T_MAC to_mac)
 
 const char* RF24NetworkHeader::toString(void) const
 {
-  static char buffer[65];
-  snprintf_P(buffer,sizeof(buffer),PSTR(" msg_id %04x from ip 0%d to ip 0%d type %c data %lx"),id,from_node,to_node,type, payload);
+  static char buffer[125];
+  snprintf_P(buffer,sizeof(buffer),PSTR(" msg_id %04x from ip 0%d to ip 0%d type %c data %lx ip_data_ip:%u ipdata_weight:%u "),id,from_node,to_node,type, payload, ip_data.ip, ip_data.weight);
   return buffer;
 }
 
@@ -389,21 +391,22 @@ bool RF24Mesh::send_JoinMessage()
 {
 	RF24NetworkHeader header(rTable.getBroadcastNode().ip, 'J', 0, rTable.getCurrentNode().ip);
   
-	header.join_data = rTable.getCurrentNode();
-	IF_SERIAL_DEBUG(printf_P(PSTR("%lu:Sending join message to ip:%d  as my ip:%d and mymac:%lu myweight:%lu --------\n\r"),rTable.getMillis(),header.to_node,header.join_data.ip, header.join_data.mac, header.join_data.weight));
-  return write(header,rTable.getBroadcastNode().mac);
+	header.ip_data.ip = rTable.getCurrentNode().ip;
+	header.ip_data.weight = rTable.getCurrentNode().weight;
+	IF_SERIAL_DEBUG(printf_P(PSTR("%lu:Sending join message to ip:%d  as my ip:%d and  myweight:%lu --------\n\r"),rTable.getMillis(),header.to_node,header.ip_data.ip, header.ip_data.weight));
+	return write(header,rTable.getMac(0));
 }
 
 bool RF24Mesh::send_WelcomeMessage(IP_MAC toNode)
 {
 	RF24NetworkHeader header(toNode.ip, 'W',rTable.getMillis(), rTable.getCurrentNode().ip);
+	header.ip_data.ip = rTable.getCurrentNode().ip;
+	header.ip_data.weight = rTable.getCurrentNode().weight;
   
-  // The 'T' message that we send is just a ulong, containing the time
-	//IP_MAC message = rTable.getCurrentNode();
-	header.join_data = rTable.getCurrentNode();
+
   printf_P(PSTR("---------------------------------\n\r"));
-  IF_SERIAL_DEBUG(printf_P(PSTR("%lu: APP Sending Welcome Message to ip: %d as my ip: %d and my mac: %lu my weight:%lu...\n\r"),rTable.getMillis(),header.to_node,header.join_data.ip,header.join_data.mac, header.join_data.weight));
-  return write(header,toNode.mac);
+  IF_SERIAL_DEBUG(printf_P(PSTR("%lu: APP Sending Welcome Message to ip: %d as my ip: %d and my weight:%u...\n\r"),rTable.getMillis(),header.to_node,header.ip_data.ip, header.ip_data.weight));
+  return write(header,rTable.getMac(0)); //broadcast mac'ine gonder.
 }
 
 /**
@@ -423,16 +426,26 @@ bool RF24Mesh::send_SensorData(uint64_t data)
 		callback.sendingFailed(0);
 		return false;
 	}
-	RF24NetworkHeader header(rTable.getMasterNode().ip,  'D', data );
+
+	T_IP ip = rTable.getShortestRouteNode().ip;
+	unsigned char type = 'D';
+
+	if (ip != rTable.getMasterNode().ip)
+	{	type = 'F';
+		printf_P(PSTR("%lu: APP Send_SersorData short ip: %d masterip: %d"),millis(),ip,rTable.getMasterNode().ip); 
+	}
+	RF24NetworkHeader header(ip,  type, data );
+	header.ip_data.ip = rTable.getCurrentNode().ip;
+	header.ip_data.weight = 0;
   
-  // The 'T' message that we send is just a ulong, containing the time
   
   IF_SERIAL_DEBUG(printf_P(PSTR("---------------------------------\n\r")));
-  printf_P(PSTR("%lu: APP Sending send_SensorData %lu to ip %lu...\n\r"),rTable.getMillis(),data, rTable.getShortestRouteNode().ip);
+  printf_P(PSTR("%lu: APP Sending send_SensorData %lu to ip %lu...\n\r"),rTable.getMillis(),data, ip);
   bool result = write(header,0,0);
   while (!result)
   {
-  	  rTable.removeUnreacheable(rTable.getShortestRouteNode());
+  	  if(!rTable.removeUnreacheable(rTable.getShortestRouteNode()))//There are no neighbour nodes
+		  joinNetwork();
 
 	  IF_SERIAL_DEBUG(printf_P(PSTR("%lu: APP Repeating failed send_SensorData, data:%lu"),rTable.getMillis(),data));
 	  result = write(header,0,0);
@@ -467,14 +480,14 @@ void RF24Mesh::handle_J(RF24NetworkHeader& header)
   // The 'T' message is just a ulong, containing the time
   //IP_MAC message;
   read(header,0,0);
-  IF_SERIAL_DEBUG(printf_P(PSTR("%lu: handle_J APP Received J message from ip:%d msg_ip:%d from mac %lu\n\r"),rTable.getMillis(),header.from_node, header.join_data.ip,header.join_data.mac));
+  IF_SERIAL_DEBUG(printf_P(PSTR("%lu: handle_J APP Received J message from ip:%d msg_ip:%d \n\r"),rTable.getMillis(),header.from_node, header.ip_data.ip));
 
   // If this message is from ourselves or the base, don't bother adding it to the active nodes.
   if ( header.from_node != this->node_address || header.from_node > 00 )
   {
 	  IF_SERIAL_DEBUG(printf_P(PSTR("%lu: handle_J farkli node kaydet ve cevap ver\n\r"),millis()));
-	  rTable.addNearNode(header.join_data);
-	  send_WelcomeMessage(header.join_data);
+	  rTable.addNearNode(header.ip_data);
+	  send_WelcomeMessage(header.ip_data);
   }
   rTable.printTable();
 }
@@ -488,13 +501,13 @@ void RF24Mesh::handle_WelcomeMessage(RF24NetworkHeader& header)
 {
   //IP_MAC message;
   read(header,0,0);
-  IF_SERIAL_DEBUG(printf_P(PSTR("%lu: handle_WelcomeMessage (%s) APP Received ip %d mac %lu weight:%d \n\r"),millis(),header.toString(),header.join_data.ip,header.join_data.mac,header.join_data.weight));
+  IF_SERIAL_DEBUG(printf_P(PSTR("%lu: handle_WelcomeMessage (%s) APP Received ip %d  weight:%d \n\r"),millis(),header.toString(),header.ip_data.ip,header.ip_data.weight));
   rTable.setMillis(header.payload);
 
   last_join_time = millis();
   // If this message is from ourselves or the base, don't bother adding it to the active nodes.
   if ( header.from_node != this->node_address || header.from_node > 00 )
-	  if(rTable.addNearNode(header.join_data))
+	  if(rTable.addNearNode(header.ip_data))
 	  {
 		   IF_SERIAL_DEBUG(printf_P(PSTR("%lu: handle_WelcomeMessage, update join status"),millis()));
 		  send_JoinMessage();
@@ -520,6 +533,34 @@ void RF24Mesh::handle_DataMessage(RF24NetworkHeader& header)
 
 }
 
+void RF24Mesh::handle_ForwardData(RF24NetworkHeader& header)
+{
+  uint64_t message;
+  read(header,&message,sizeof(uint64_t));
+
+  if(header.from_node == rTable.getCurrentNode().ip)
+	IF_SERIAL_DEBUG(printf_P(PSTR("%lu: handle_DataMessage APP I got my own data omitting. %lu from %d\n\r"),rTable.getMillis(),message,header.from_node));
+  else
+  {
+	  callback.incomingData(header);
+
+	  T_IP ip = rTable.getShortestRouteNode().ip;
+	  unsigned char type = 'D';
+
+	  header.ip_data.weight++;
+	  header.from_node = rTable.getCurrentNode().ip;
+	  header.to_node = ip;
+      if (ip != rTable.getMasterNode().ip)
+	  {	
+		  type = 'F';
+		  printf_P(PSTR("%lu: APP handle_ForwardData short ip: %d masterip: %d"),millis(),ip,rTable.getMasterNode().ip); 
+	  }
+	  header.type = type;
+ 
+	  write(header, rTable.getMac(0));
+  }
+
+}
 
 StatusCallback::StatusCallback()
 {

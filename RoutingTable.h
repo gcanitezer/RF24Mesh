@@ -11,7 +11,6 @@
 typedef struct 
 {
 	T_IP ip;
-	T_MAC mac;
 	uint16_t weight;
 }IP_MAC,*P_IP_MAC;
 
@@ -49,7 +48,7 @@ public:
 	T_MAC getShortestMac(T_IP ip);
 	void setMillis(uint64_t data);
 	unsigned long getMillis();
-	void removeUnreacheable(IP_MAC nearNode);
+	bool removeUnreacheable(IP_MAC nearNode);
 	int8_t getShortestNodePosition();
 };
 #endif //__ROUTINGTABLE_H__
