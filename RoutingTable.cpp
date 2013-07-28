@@ -53,7 +53,7 @@ IP_MAC RoutingTable::getBroadcastNode()
 
 IP_MAC RoutingTable::getCurrentNode()
 {
-	printf_P(PSTR("%lu: getCurrentNode IP:%u weight: %u \n\r"),millis(), myNode.ip, myNode.weight);
+	IF_SERIAL_DEBUG(printf_P(PSTR("%lu: getCurrentNode IP:%u weight: %u \n\r"),millis(), myNode.ip, myNode.weight));
 	return myNode;
 }
 
@@ -67,16 +67,16 @@ void RoutingTable::setCurrentNode(T_IP myIP)
 	{
 		this->myNode = MASTER_SYNC_ADDRESS;
 		iAmMaster = true;
-		printf_P(PSTR("%lu:SetCurrent This is master node ip:%u,  weight:%02x\n\r"),millis(),myNode.ip,  myNode.weight);
+		IF_SERIAL_DEBUG(printf_P(PSTR("%lu:SetCurrent This is master node ip:%u,  weight:%02x\n\r"),millis(),myNode.ip,  myNode.weight));
 	}
 	else
 	{
 		this->myNode.ip = myIP;
 		this->myNode.weight = MAX_WEIGHT;
-		printf_P(PSTR("%lu: SetCurrent3 MyNode IP:%d  weight:%u \n\r"),millis(),myNode.ip, this->myNode.weight );
+		IF_SERIAL_DEBUG(printf_P(PSTR("%lu: SetCurrent3 MyNode IP:%d  weight:%u \n\r"),millis(),myNode.ip, this->myNode.weight ));
 		if(this->myNode.weight == MAX_WEIGHT)
 		{
-			printf_P(PSTR("%lu: SetCurrent4 it is 0 MyNode IP:%d  weight:%u \n\r"),millis(),myNode.ip, this->myNode.weight );
+			IF_SERIAL_DEBUG(printf_P(PSTR("%lu: SetCurrent4 it is 0 MyNode IP:%d  weight:%u \n\r"),millis(),myNode.ip, this->myNode.weight ));
 		}
 	}
 	
@@ -96,10 +96,10 @@ bool RoutingTable::addNearNode(IP_MAC nearNode)
 	bool result = false;
 	int8_t position = checkTable(nearNode.ip);
 	
-	printf_P(PSTR("%lu: addNearNode IP:%d weight:0%d myweight:0%d \n\r"),millis(),nearNode.ip,nearNode.weight,myNode.weight );
+	IF_SERIAL_DEBUG(printf_P(PSTR("%lu: addNearNode IP:%d weight:0%d myweight:0%d \n\r"),millis(),nearNode.ip,nearNode.weight,myNode.weight ));
 	if(nearNode.weight + 1 < myNode.weight)
 	{
-		printf_P(PSTR("%lu: addNearNode IP:%d position:%d \n\r"),millis(),nearNode.ip, position );
+		IF_SERIAL_DEBUG(printf_P(PSTR("%lu: addNearNode IP:%d position:%d \n\r"),millis(),nearNode.ip, position ));
 		myNode.weight = nearNode.weight + 1;
 		if(position != -1)
 		{
@@ -175,7 +175,7 @@ void RoutingTable::addReacheableNode(T_IP nearNodeID, T_IP* reachableNodeID, int
 
 IP_MAC RoutingTable::getShortestRouteNode()
 {
-	printf_P(PSTR("%lu: getShortestRouteNode \r\n"), millis());
+	IF_SERIAL_DEBUG(printf_P(PSTR("%lu: getShortestRouteNode \r\n"), millis()));
 	if(iAmMaster)
 	{
 		printf_P(PSTR("%lu: *********DONT CALLME********I AM MASTER********getShortestRouteNode \r\n"), millis());
@@ -197,7 +197,7 @@ void RoutingTable::cleanTable()
 
 bool RoutingTable::amIJoinedNetwork()
 {
-	if(shortestPath == MAX_WEIGHT)
+	if(shortestPath >= MAX_WEIGHT)
 		return false;
 	else 
 		return true;

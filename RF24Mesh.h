@@ -194,7 +194,7 @@ void handle_WelcomeMessage(RF24NetworkHeader& header);
 void handle_DataMessage(RF24NetworkHeader& header);
 void handle_ForwardData(RF24NetworkHeader& header);
 
-void handle_J(RF24NetworkHeader& header);
+void handle_JoinMessage(RF24NetworkHeader& header);
 
 /**
  * Add a particular node to the current list of active nodes
@@ -215,7 +215,7 @@ protected:
   bool enqueue(void);
 
   bool is_valid_address( uint16_t node );
-  void listenRadio(bool waitJoinAck);
+  void listenRadio();
   void handlePacket();
 private:
   RF24& radio; /**< Underlying radio driver, provides link/physical layers */ 
@@ -226,12 +226,12 @@ private:
   uint8_t frame_queue[5*frame_size]; /**< Space for a small set of frames that need to be delivered to the app layer */
   uint8_t* next_frame; /**< Pointer into the @p frame_queue where we should place the next received frame */
 
-  uint16_t parent_node; /**< Our parent's node address */
-  uint8_t parent_pipe; /**< The pipe our parent uses to listen to us */
-  uint16_t node_mask; /**< The bits which contain signfificant node address information */
+  //uint16_t parent_node; /**< Our parent's node address */
+  //uint8_t parent_pipe; /**< The pipe our parent uses to listen to us */
+  //uint16_t node_mask; /**< The bits which contain signfificant node address information */
   long last_join_time;
-
-
+	static const int JOIN_DURATION = 60000;
+	static const int JOIN_WAIT_WELCOME = 10000;
 };
 
 /**

@@ -15,8 +15,6 @@
 
 uint16_t RF24NetworkHeader::next_id = 1;
 
-  // Delay manager to send pings regularly
-const unsigned long interval = 2000; // ms
 unsigned long last_time_sent;
 
 RoutingTable rTable;
@@ -29,6 +27,10 @@ short next_ping_node_index = 0;
 
 uint64_t pipe_address( uint16_t node, uint8_t pipe );
 bool is_valid_address( uint16_t node );
+
+typedef enum  {INIT, NJOINED, JOINED} states;
+
+states state=INIT;
 
 /******************************************************************/
 
@@ -52,6 +54,7 @@ void RF24Mesh::begin(uint8_t _channel, T_IP _node_address )
   radio.setPALevel(RF24_PA_HIGH);
   radio.setCRCLength(RF24_CRC_16);
   radio.setRetries(5,15);
+  radio.setAutoAck(false);
 
 
   radio.openReadingPipe(0, rTable.getMac(0));
@@ -61,8 +64,6 @@ void RF24Mesh::begin(uint8_t _channel, T_IP _node_address )
 
   // Spew debugging state about the radio
   radio.printDetails();
-
-
 }
 
 /*************************************************************/
@@ -72,12 +73,27 @@ void RF24Mesh::loop(void)
   // Pump the network regularly
   updateNetworkTopology();
 
-  listenRadio(false);
+  listenRadio();
   
-	handlePacket();
+  handlePacket();
 }
 
 /******************************************************************/
+void RF24Mesh::updateNetworkTopology(void)
+{
+
+	if (!rTable.amImaster() && (state == INIT || state == NJOINED))
+	{
+
+		if (last_join_time == 0 || (millis() - last_join_time) > JOIN_DURATION) //bir dakika
+		{
+
+			joinNetwork();
+			IF_SERIAL_DEBUG(printf_P(PSTR("%lu: Join network called last_join_time: %lu \n\r"),rTable.getMillis(),last_join_time));
+		}
+	}
+
+}
 
 void RF24Mesh::handlePacket()
 {
@@ -94,7 +110,7 @@ void RF24Mesh::handlePacket()
     switch (header.type)
     {
 	case 'J':
-		handle_J(header);
+		handle_JoinMessage(header);
 		break;
     case 'W':
       handle_WelcomeMessage(header);
@@ -104,6 +120,7 @@ void RF24Mesh::handlePacket()
       break;
 	case 'F':
 	  handle_ForwardData(header);
+	  break;
     default:
 	  printf_P(PSTR("*** WARNING *** Unknown message type %s\n\r"),header.toString());
       read(header,0,0);
@@ -111,34 +128,16 @@ void RF24Mesh::handlePacket()
     };
   }
 }
-void RF24Mesh::updateNetworkTopology(void)
-{
-	
-	 if(!rTable.amImaster())
-	  {
-		
-  
-	  //IF_SERIAL_DEBUG(printf_P(PSTR("%lu: updateNetworkTopology\n\r"),millis()));
-	  
-	   if(last_join_time == 0|| (millis()-last_join_time) > 60*1000) //bir dakika
-	{
-	  
-		  rTable.cleanTable();
-		  joinNetwork();
-		  IF_SERIAL_DEBUG(printf_P(PSTR("%lu: Join network called last_join_time: %lu \n\r"),millis(),last_join_time));
-	  }
-  }
-  
-}
 
-void RF24Mesh::listenRadio(bool waitJoinAck)
+
+void RF24Mesh::listenRadio()
 {
 	long stime = millis();
 	bool wait = true;
 
   while(wait)
   {
-	   
+
 		// if there is data ready
 	  uint8_t pipe_num;
 	  while ( radio.available(&pipe_num) )
@@ -165,25 +164,21 @@ void RF24Mesh::listenRadio(bool waitJoinAck)
 				// Add it to the buffer of frames for us
 				enqueue();
 
-				handlePacket();
+				//goker handlePacket();
 		  }
 		  else
 		  {
 			  printf_P(PSTR("%lu: MAC Received message *****NOT for me**, *WARNING* wrong message not forwarding %d != %d \n\r"), rTable.getMillis(), header.to_node, rTable.getCurrentNode().ip);
-				// Relay it
-	//		  uint64_t mac = rTable.getMac(header.to_node);
-	//		  if(mac != 0)
-	//			write(mac);
 		  }
-			
-		  
+
+
 
 		}
 	  }
-	  
-	if(waitJoinAck)
+
+	if(state == NJOINED || state == INIT)
 	{
-		wait = (millis()-stime>10000)?false:true;
+			wait = (millis() - stime > JOIN_WAIT_WELCOME) ? false : true;
 	}
 	else
 	{
@@ -194,8 +189,9 @@ void RF24Mesh::listenRadio(bool waitJoinAck)
 }
 void RF24Mesh::joinNetwork()
 {
+	rTable.cleanTable();
 	send_JoinMessage();
-	listenRadio(true);
+	//listenRadio(true);
 }
 bool RF24Mesh::isJoined()
 {
@@ -216,7 +212,7 @@ bool RF24Mesh::enqueue(void)
     next_frame += frame_size; 
 
     result = true;
-    printf_P(PSTR("ok\n\r"));
+    IF_SERIAL_DEBUG(printf_P(PSTR("ok\n\r")));
   }
   else
   {
@@ -397,7 +393,7 @@ bool RF24Mesh::send_JoinMessage()
   
 	header.ip_data.ip = rTable.getCurrentNode().ip;
 	header.ip_data.weight = rTable.getCurrentNode().weight;
-	IF_SERIAL_DEBUG(printf_P(PSTR("%lu:Sending join message to ip:%d  as my ip:%d and  myweight:%lu --------\n\r"),rTable.getMillis(),header.to_node,header.ip_data.ip, header.ip_data.weight));
+	IF_SERIAL_DEBUG(printf_P(PSTR("%lu:Sending join message (%s) \n\r"),rTable.getMillis(),header.toString()));
 	return write(header,rTable.getMac(0));
 }
 
@@ -413,7 +409,7 @@ bool RF24Mesh::send_WelcomeMessage(IP_MAC toNode)
   
 
   printf_P(PSTR("---------------------------------\n\r"));
-  IF_SERIAL_DEBUG(printf_P(PSTR("%lu: APP Sending Welcome Message to ip: %d as my ip: %d and my weight:%u...\n\r"),rTable.getMillis(),header.to_node,header.ip_data.ip, header.ip_data.weight));
+  IF_SERIAL_DEBUG(printf_P(PSTR("%lu: APP Sending Welcome Message (%s)...\n\r"),rTable.getMillis(),header.toString()));
   return write(header,rTable.getMac(0)); //broadcast mac'ine gonder.
 }
 
@@ -440,22 +436,26 @@ bool RF24Mesh::send_SensorData(uint64_t data)
 
 	if (ip != rTable.getMasterNode().ip)
 	{	type = 'F';
-		printf_P(PSTR("%lu: APP Send_SersorData short ip: %d masterip: %d"),millis(),ip,rTable.getMasterNode().ip); 
+		printf_P(PSTR("%lu: APP Send_SersorData short ip: %d masterip: %d"),rTable.getMillis(),ip,rTable.getMasterNode().ip);
 	}
 	RF24NetworkHeader header(ip,  type, data );
-	header.ip_data.ip = rTable.getCurrentNode().ip;
-	header.ip_data.weight = 0;
+	header.ip_data.ip = rTable.getCurrentNode().ip; //source ip
+	header.ip_data.weight = 0; //not important
   
   
   IF_SERIAL_DEBUG(printf_P(PSTR("---------------------------------\n\r")));
-  printf_P(PSTR("%lu: APP Sending send_SensorData %lu to ip %lu...\n\r"),rTable.getMillis(),data, ip);
+  printf_P(PSTR("%lu: APP Sending send_SensorData %s ...\n\r"),rTable.getMillis(), header.toString());
   bool result = write(header,0,0);
   while (!result)
   {
   	  if(!rTable.removeUnreacheable(rTable.getShortestRouteNode()))//There are no neighbour nodes
-		  joinNetwork();
+  	  {
+  		  state = NJOINED;
+  		  //goker joinNetwork();
+  		  return false;
+  	  }
 
-	  IF_SERIAL_DEBUG(printf_P(PSTR("%lu: APP Repeating failed send_SensorData, data:%lu"),rTable.getMillis(),data));
+	  IF_SERIAL_DEBUG(printf_P(PSTR("%lu: APP Repeating failed send_SensorData, (%s)"),rTable.getMillis(),header.toString()));
 	  result = write(header,0,0);
   }
   return result;
@@ -483,17 +483,16 @@ bool RF24Mesh::send_N(uint16_t to)
  *
  * Add the node to the list of active nodes
  */
-void RF24Mesh::handle_J(RF24NetworkHeader& header)
+void RF24Mesh::handle_JoinMessage(RF24NetworkHeader& header)
 {
-  // The 'T' message is just a ulong, containing the time
-  //IP_MAC message;
+
   read(header,0,0);
-  IF_SERIAL_DEBUG(printf_P(PSTR("%lu: handle_J APP Received J message from ip:%d msg_ip:%d \n\r"),rTable.getMillis(),header.from_node, header.ip_data.ip));
+  IF_SERIAL_DEBUG(printf_P(PSTR("%lu: handle_JoinMessage (%s) \n\r"),rTable.getMillis(),header.toString()));
 
   // If this message is from ourselves or the base, don't bother adding it to the active nodes.
   if ( header.from_node != this->node_address || header.from_node > 00 )
   {
-	  IF_SERIAL_DEBUG(printf_P(PSTR("%lu: handle_J farkli node kaydet ve cevap ver\n\r"),millis()));
+	  IF_SERIAL_DEBUG(printf_P(PSTR("%lu: handle_J farkli node kaydet ve cevap ver\n\r"),rTable.getMillis()));
 	  rTable.addNearNode(header.ip_data);
 	  send_WelcomeMessage(header.ip_data);
   }
@@ -509,19 +508,24 @@ void RF24Mesh::handle_WelcomeMessage(RF24NetworkHeader& header)
 {
   //IP_MAC message;
   read(header,0,0);
-  IF_SERIAL_DEBUG(printf_P(PSTR("%lu: handle_WelcomeMessage (%s) APP Received ip %d  weight:%d \n\r"),millis(),header.toString(),header.ip_data.ip,header.ip_data.weight));
-  rTable.setMillis(header.payload);
+  IF_SERIAL_DEBUG(printf_P(PSTR("%lu: handle_WelcomeMessage (%s) \n\r"),rTable.getMillis(),header.toString()));
 
-  last_join_time = millis();
   // If this message is from ourselves or the base, don't bother adding it to the active nodes.
   if ( header.from_node != this->node_address || header.from_node > 00 )
 	  if(rTable.addNearNode(header.ip_data))
 	  {
-		   IF_SERIAL_DEBUG(printf_P(PSTR("%lu: handle_WelcomeMessage, update join status"),millis()));
+		  rTable.setMillis(header.payload);
+		  IF_SERIAL_DEBUG(printf_P(PSTR("%lu: handle_WelcomeMessage, update join status"),rTable.getMillis()));
 		  send_JoinMessage();
 	  }
 
    rTable.printTable();
+
+   if(rTable.amIJoinedNetwork())
+   {
+	   last_join_time = millis();
+	   state = JOINED;
+   }
 }
 
 /**
@@ -529,11 +533,11 @@ void RF24Mesh::handle_WelcomeMessage(RF24NetworkHeader& header)
  */
 void RF24Mesh::handle_DataMessage(RF24NetworkHeader& header)
 {
-  uint64_t message;
-  read(header,&message,sizeof(uint64_t));
+  //uint64_t message;
+  read(header,NULL,0);
 
   if(header.from_node == rTable.getCurrentNode().ip)
-	IF_SERIAL_DEBUG(printf_P(PSTR("%lu: handle_DataMessage APP I got my own data omitting. %lu from %d\n\r"),rTable.getMillis(),message,header.from_node));
+	IF_SERIAL_DEBUG(printf_P(PSTR("%lu: handle_DataMessage APP I got my own data omitting.(%s)\n\r"),rTable.getMillis(), header.toString()));
   else
   {
 	  callback.incomingData(header);
@@ -544,10 +548,10 @@ void RF24Mesh::handle_DataMessage(RF24NetworkHeader& header)
 void RF24Mesh::handle_ForwardData(RF24NetworkHeader& header)
 {
   uint64_t message;
-  read(header,&message,sizeof(uint64_t));
+  read(header,NULL,0);
 
   if(header.from_node == rTable.getCurrentNode().ip)
-	IF_SERIAL_DEBUG(printf_P(PSTR("%lu: handle_DataMessage APP I got my own data omitting. %lu from %d\n\r"),rTable.getMillis(),message,header.from_node));
+	IF_SERIAL_DEBUG(printf_P(PSTR("%lu: handle_DataMessage APP I got my own data omitting. (%s)\n\r"),rTable.getMillis(),header.toString()));
   else
   {
 	  callback.incomingData(header);
@@ -561,7 +565,7 @@ void RF24Mesh::handle_ForwardData(RF24NetworkHeader& header)
       if (ip != rTable.getMasterNode().ip)
 	  {	
 		  type = 'F';
-		  printf_P(PSTR("%lu: APP handle_ForwardData short ip: %d masterip: %d"),millis(),ip,rTable.getMasterNode().ip); 
+		  printf_P(PSTR("%lu: APP handle_ForwardData short ip: %d masterip: %d"),rTable.getMillis(),ip,rTable.getMasterNode().ip);
 	  }
 	  header.type = type;
  
