@@ -5,7 +5,7 @@
  modify it under the terms of the GNU General Public License
  version 2 as published by the Free Software Foundation.
  */
-#define SERIAL_DEBUG
+//#define SERIAL_DEBUG
 
 #include "RF24Network_config.h"
 #include "RF24.h"
@@ -436,7 +436,7 @@ bool RF24Mesh::send_SensorData(uint64_t data)
 
 	if (ip != rTable.getMasterNode().ip)
 	{	type = 'F';
-		printf_P(PSTR("%lu: APP Send_SersorData short ip: %d masterip: %d"),rTable.getMillis(),ip,rTable.getMasterNode().ip);
+		IF_SERIAL_DEBUG(printf_P(PSTR("%lu: APP Send_SersorData short ip: %d masterip: %d"),rTable.getMillis(),ip,rTable.getMasterNode().ip));
 	}
 	RF24NetworkHeader header(ip,  type, data );
 	header.ip_data.ip = rTable.getCurrentNode().ip; //source ip
