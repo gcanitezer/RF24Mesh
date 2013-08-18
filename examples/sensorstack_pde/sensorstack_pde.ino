@@ -76,7 +76,7 @@ void setup(void)
   //
 
   // Which node are we?
-  this_node = nodeconfig_read();
+  this_node = 7;//nodeconfig_read();
 
   //
   // Bring up the RF network
@@ -91,7 +91,7 @@ void loop(void)
 {
   // Pump the network regularly
   network.loop();
-  if (this_node != 0 && network.isJoined() && millis()%1000 == 0)
+  if (this_node != 0 && network.isJoined() && millis()%10000 == 0)
   network.send_SensorData(message_no++);
   
   

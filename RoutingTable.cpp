@@ -85,7 +85,7 @@ int8_t RoutingTable::checkTable(T_IP ip)
 {
 	for(int i=0;i<tableCount;i++)
 	{
-		if(table[i].ip == ip)
+		if(table[i].ip_mac.ip == ip)
 			return i;
 	}
 	
@@ -103,22 +103,31 @@ bool RoutingTable::addNearNode(IP_MAC nearNode)
 		myNode.weight = nearNode.weight + 1;
 		if(position != -1)
 		{
-			table[position] = nearNode;
+			table[position].ip_mac = nearNode;
 			shortestPath = position;
 		}
 		else
 		{
-			table[tableCount] = nearNode;
+			table[tableCount].ip_mac = nearNode;
 			shortestPath = tableCount++;
 		}
+		table[shortestPath].time = getMillis();
+		table[shortestPath].status = SHORTENED;
 		result = true;
 	}
 	else
 	{
 		if(position != -1)
-			table[position] = nearNode;
+		{
+			table[position].ip_mac = nearNode;
+			table[position].status = GOT_JOIN;
+		}
 		else
-			table[tableCount++] = nearNode;
+		{
+			table[tableCount].status = GOT_JOIN;
+			table[tableCount++].ip_mac = nearNode;
+
+		}
 	}
 
 	if(tableCount == MAX_NEAR_NODE)
@@ -135,9 +144,9 @@ int8_t RoutingTable::getShortestNodePosition()
 
 	for(int i=0;i<tableCount;i++)
 	{
-		if(table[i].weight<result)
+		if(table[i].ip_mac.weight<result)
 		{	
-			result = table[i].weight;
+			result = table[i].ip_mac.weight;
 			pos = i;
 		}
 	}
@@ -182,7 +191,7 @@ IP_MAC RoutingTable::getShortestRouteNode()
 		return MASTER_SYNC_ADDRESS;
 	}
 	else 
-		return table[shortestPath];
+		return table[shortestPath].ip_mac;
 }
 
 void RoutingTable::cleanTable()
@@ -195,6 +204,10 @@ void RoutingTable::cleanTable()
 	}
 }
 
+void RoutingTable::sentData(RF24NetworkHeader h)
+{
+	//TODO fill in sentData(RF24NetworkHeader h)
+}
 bool RoutingTable::amIJoinedNetwork()
 {
 	if(shortestPath >= MAX_WEIGHT)
@@ -208,7 +221,7 @@ int RoutingTable::getTableSize()
 	return tableCount;
 }
 
-void* RoutingTable::getTable()
+RoutingData* RoutingTable::getTable()
 {
 	return table;
 }
@@ -218,9 +231,39 @@ void RoutingTable::printTable()
 	printf_P(PSTR("----JOINED TABLE---------\n\r"));
 	for(int i=0;i<tableCount;i++)
 	{
-		printf_P(PSTR("ip:%u  weight:%u\n\r"),table[i].ip,  table[i].weight); 
+		printf_P(PSTR("ip:%u  weight:%u\n\r"),table[i].ip_mac.ip,  table[i].ip_mac.weight);
 	}
+	printf_P(PSTR("my_ip:%u  my_weight:%u shortest path = ip:%u  weight:%u \n\r"),myNode.ip,  myNode.weight, table[shortestPath].ip_mac.ip,  table[shortestPath].ip_mac.weight);
 	printf_P(PSTR("----END OF JOINED TABLE---------\n\r"));
+}
+
+bool RoutingTable::isPathShortened()
+{
+//TODO
+}
+void RoutingTable::connectShortened()
+{
+//TODO
+}
+
+int RoutingTable::getNumOfWelcomes()
+{
+//TODO
+}
+
+int RoutingTable::getNumOfJoines()
+{
+//TODO
+}
+
+void RoutingTable::setWelcomeMessageSent(T_IP ip)
+{
+//TODO
+}
+
+void RoutingTable::setConnected(T_IP ip)
+{
+//TODO
 }
 
 T_MAC RoutingTable::getMac(T_IP ip)

@@ -17,63 +17,16 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include "RF24NetworkHeader.h"
 #include "RoutingTable.h"
 
 class RF24;
 
-/**
- * Header which is sent with each message
- *
- * The frame put over the air consists of this header and a message
- */
-struct RF24NetworkHeader
-{
-  uint16_t from_node; /**< Logical address where the message was generated */
-  uint16_t to_node; /**< Logical address where the message is going */
-  uint16_t id; /**< Sequential message ID, incremented every message */
-  uint64_t payload;
-  IP_MAC ip_data; //it is used as ip and weight info for join data; original ip and hop count for sensor data
-  unsigned char type; /**< Type of the packet.  0-127 are user-defined types, 128-255 are reserved for system */
-  unsigned char reserved; /**< Reserved for future use */
-
-  static uint16_t next_id; /**< The message ID of the next message to be sent */
-
-  /**
-   * Default constructor
-   *
-   * Simply constructs a blank header
-   */
-  RF24NetworkHeader() {}
-
-  /**
-   * Send constructor
-   *
-   * Use this constructor to create a header and then send a message
-   *
-   * @code
-   *  RF24NetworkHeader header(recipient_address,'t');
-   *  network.write(header,&message,sizeof(message));
-   * @endcode
-   *
-   * @param _to The logical node address where the message is going
-   * @param _type The type of message which follows.  Only 0-127 are allowed for
-   * user messages.
-   */
-  RF24NetworkHeader(uint16_t _to, unsigned char _type = 0, uint64_t _data = 0, uint16_t _from = 0): to_node(_to), payload(_data),id(next_id++), type(_type&0x7f), from_node(_from) {}
-
-  /**
-   * Create debugging string
-   *
-   * Useful for debugging.  Dumps all members into a single string, using
-   * internal static memory.  This memory will get overridden next time
-   * you call the method.
-   *
-   * @return String representation of this object
-   */
-  const char* toString(void) const;
-};
 
 
+
+#define SEND_QUEUE_SIZE 5
+#define RECEIVE_QUEUE_SIZE 5
 /**
 * Callback Interface
 * 
@@ -96,6 +49,7 @@ public:
  * This class implements an OSI Network Layer using nRF24L01(+) radios driven
  * by RF24 library.
  */
+typedef enum  {INIT, NJOINED, SENDJOIN, JOINRECEIVED, JOINED} STATES;
 
 class RF24Mesh
 {
@@ -132,6 +86,9 @@ public:
    * @return Whether there is a message available for this node
    */
   bool available(void);
+
+  bool send_available(void);
+
  
   /**
    * Read the next available header
@@ -178,9 +135,11 @@ public:
  */
   bool send_N(uint16_t to);
 
-  bool send_WelcomeMessage(IP_MAC);
+  bool send_WelcomeMessage(T_IP);
 
   bool send_JoinMessage();
+
+  bool send_WelcomeAck(T_IP ip);
 /**
  * Handle a 'T' message
  *
@@ -201,30 +160,47 @@ void handle_JoinMessage(RF24NetworkHeader& header);
  */
 void add_node(uint16_t node);
 
+
+
 void loop(void);
+
 
 void joinNetwork();
 bool isJoined();
 
 protected:
+	void fastloop();
+	void slowloop();
+
+	void setState(STATES s);
+
   void open_pipes(void);
   uint16_t find_node( uint16_t current_node, uint16_t target_node );
+  void shiftleft(uint8_t *send_queue, const int frame_size, uint8_t *frame_buffer, uint8_t *last_pointer);
   bool write(T_MAC);
+  int write();
   bool write(RF24NetworkHeader& header, T_MAC mac);
   bool write_to_pipe( uint16_t node, uint8_t pipe );
   bool enqueue(void);
+  bool send_enqueue();
 
   bool is_valid_address( uint16_t node );
   void listenRadio();
+  void sendAckToWelcome();
+  void sendWelcomeToJoin();
   void handlePacket();
+  void sendPackets();
 private:
   RF24& radio; /**< Underlying radio driver, provides link/physical layers */ 
   StatusCallback& callback;
   uint16_t node_address; /**< Logical node address of this unit, 1 .. UINT_MAX */
   const static int frame_size = 32; /**< How large is each frame over the air */ 
   uint8_t frame_buffer[frame_size]; /**< Space to put the frame that will be sent/received over the air */
-  uint8_t frame_queue[5*frame_size]; /**< Space for a small set of frames that need to be delivered to the app layer */
-  uint8_t* next_frame; /**< Pointer into the @p frame_queue where we should place the next received frame */
+  uint8_t receive_queue[RECEIVE_QUEUE_SIZE*frame_size]; /**< Space for a small set of frames that need to be delivered to the app layer */
+  uint8_t* receive_frame; /**< Pointer into the @p frame_queue where we should place the next received frame */
+
+  uint8_t send_queue[SEND_QUEUE_SIZE*frame_size];
+  uint8_t* send_frame_p;
 
   //uint16_t parent_node; /**< Our parent's node address */
   //uint8_t parent_pipe; /**< The pipe our parent uses to listen to us */
@@ -232,6 +208,9 @@ private:
   long last_join_time;
 	static const int JOIN_DURATION = 60000;
 	static const int JOIN_WAIT_WELCOME = 10000;
+
+	unsigned long state_time; //use millis()
+	STATES state;
 };
 
 /**

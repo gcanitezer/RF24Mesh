@@ -5,7 +5,7 @@
  modify it under the terms of the GNU General Public License
  version 2 as published by the Free Software Foundation.
  */
-//#define SERIAL_DEBUG
+#define SERIAL_DEBUG
 
 #include "RF24Network_config.h"
 #include "RF24.h"
@@ -28,13 +28,12 @@ short next_ping_node_index = 0;
 uint64_t pipe_address( uint16_t node, uint8_t pipe );
 bool is_valid_address( uint16_t node );
 
-typedef enum  {INIT, NJOINED, JOINED} states;
 
-states state=INIT;
+
 
 /******************************************************************/
 
-RF24Mesh::RF24Mesh( RF24& _radio, StatusCallback& _callback ): radio(_radio), callback(_callback), next_frame(frame_queue)
+RF24Mesh::RF24Mesh( RF24& _radio, StatusCallback& _callback ): radio(_radio), callback(_callback), receive_frame(receive_queue), send_frame_p(send_queue), state(INIT), state_time(0)
 {
 	last_join_time = 0;
 }
@@ -46,6 +45,9 @@ void RF24Mesh::begin(uint8_t _channel, T_IP _node_address )
 
   node_address = _node_address;
   rTable.setCurrentNode(node_address);
+
+  if(rTable.amImaster())
+	  state = JOINED;
 
   radio.begin();
   // Set up the radio the way we want it to look
@@ -70,37 +72,113 @@ void RF24Mesh::begin(uint8_t _channel, T_IP _node_address )
 
 void RF24Mesh::loop(void)
 {
-  // Pump the network regularly
-  updateNetworkTopology();
 
-  listenRadio();
-  
-  handlePacket();
+	fastloop();
+
+	slowloop();
+
 }
 
+
+void RF24Mesh::fastloop()
+{
+	// Pump the network regularly
+	  updateNetworkTopology();
+
+	  listenRadio();
+
+	  handlePacket();
+}
+
+// TODO slow loop icin sure ve timer ayarlanacak
+void RF24Mesh::slowloop()
+{
+	handlePacket();
+
+	sendPackets();
+}
 /******************************************************************/
 void RF24Mesh::updateNetworkTopology(void)
 {
-
 	if (!rTable.amImaster() && (state == INIT || state == NJOINED))
 	{
-
 		if (last_join_time == 0 || (millis() - last_join_time) > JOIN_DURATION) //bir dakika
 		{
 
 			joinNetwork();
+			setState(SENDJOIN);
+
 			IF_SERIAL_DEBUG(printf_P(PSTR("%lu: Join network called last_join_time: %lu \n\r"),rTable.getMillis(),last_join_time));
 		}
+	}
+	else if (state == SENDJOIN)
+	{
+		if (millis() - state_time >= JOIN_WAIT_WELCOME)
+		{
+			sendAckToWelcome();
+			if(rTable.amIJoinedNetwork())
+			{
+				setState(JOINED);
+				last_join_time = millis();
+				IF_SERIAL_DEBUG(printf_P(PSTR("%lu: I have joined the network: %lu \n\r"),rTable.getMillis(),last_join_time));
+			}
+			else
+			{
+				setState(NJOINED);
+				IF_SERIAL_DEBUG(printf_P(PSTR("%lu: I could ****NOT*** joined the network: %lu \n\r"),rTable.getMillis(),last_join_time));
+			}
+		}
+	}
+	else if(state == JOINRECEIVED)
+	{
+		if(rTable.isPathShortened())
+		{
+			rTable.connectShortened();
+			send_JoinMessage();
+			setState(SENDJOIN);
+		}
+		else
+		{
+			sendWelcomeToJoin();
+		}
+	}
+
+
+}
+
+void RF24Mesh::sendAckToWelcome()
+{
+	//TODO doldur sendAckToWelcome
+	int size = rTable.getNumOfWelcomes();
+	T_IP ips[size];
+
+	for(int i=0;i<size;i++)
+	{
+		send_WelcomeAck(ips[i]);
+		rTable.setConnected(ips[i]);
 	}
 
 }
 
+void RF24Mesh::sendWelcomeToJoin()
+{
+	int size = rTable.getNumOfJoines();
+	T_IP ips[size];
+
+	for(int i=0;i<size;i++)
+	{
+		send_WelcomeMessage(ips[i]);
+		rTable.setWelcomeMessageSent(ips[i]);
+
+	}
+}
 void RF24Mesh::handlePacket()
 {
+	int count=0;
 	// Is there anything ready for us?
   while ( available() )
   {
-	  IF_SERIAL_DEBUG(printf_P(PSTR("There are available received message \n\r")));
+	  IF_SERIAL_DEBUG(printf_P(PSTR("There are available received message %d \n\r"),count++));
 
     // If so, take a look at it 
     RF24NetworkHeader header;
@@ -127,8 +205,17 @@ void RF24Mesh::handlePacket()
       break;
     };
   }
+
 }
 
+void RF24Mesh::sendPackets()
+{
+	// Is there anything ready for us?
+	  while ( send_available() )
+	  {
+		  write();
+	  }
+}
 
 void RF24Mesh::listenRadio()
 {
@@ -203,13 +290,13 @@ bool RF24Mesh::enqueue(void)
 {
   bool result = false;
   
-  IF_SERIAL_DEBUG(printf_P(PSTR("%lu: NET Enqueue @%x "),rTable.getMillis(),next_frame-frame_queue));
+  IF_SERIAL_DEBUG(printf_P(PSTR("%lu: NET Enqueue @%x "),rTable.getMillis(),receive_frame-receive_queue));
 
   // Copy the current frame into the frame queue
-  if ( next_frame < frame_queue + sizeof(frame_queue) )
+  if ( receive_frame < receive_queue + sizeof(receive_queue) )
   {
-    memcpy(next_frame,frame_buffer, frame_size );
-    next_frame += frame_size; 
+    memcpy(receive_frame,frame_buffer, frame_size );
+    receive_frame += frame_size; 
 
     result = true;
     IF_SERIAL_DEBUG(printf_P(PSTR("ok\n\r")));
@@ -222,14 +309,41 @@ bool RF24Mesh::enqueue(void)
   return result;
 }
 
+bool RF24Mesh::send_enqueue()
+{
+	bool result = false;
+
+	IF_SERIAL_DEBUG(printf_P(PSTR("%lu: NET Send Enqueue @%x "),rTable.getMillis(),send_frame_p-send_queue));
+
+	// Copy the current frame into the frame queue
+	if (send_frame_p < send_queue + sizeof(send_queue))
+	{
+		memcpy(send_frame_p, frame_buffer, frame_size);
+		send_frame_p += frame_size;
+
+		result = true;
+		IF_SERIAL_DEBUG(printf_P(PSTR("copied to send buffer\n\r")));
+	}
+	else
+	{
+		printf_P(PSTR("failed to write send queue\n\r"));
+	}
+
+	return result;
+}
 /******************************************************************/
 
 bool RF24Mesh::available(void)
 {
   // Are there frames on the queue for us?
-  return (next_frame > frame_queue);
+  return (receive_frame > receive_queue);
 }
 
+bool RF24Mesh::send_available(void)
+{
+  // Are there frames on the queue for us?
+  return (send_frame_p > send_queue);
+}
 /******************************************************************/
 
 void RF24Mesh::peek(RF24NetworkHeader& header)
@@ -237,7 +351,7 @@ void RF24Mesh::peek(RF24NetworkHeader& header)
   if ( available() )
   {
     // Copy the next available frame from the queue into the provided buffer
-    memcpy(&header,next_frame-frame_size,sizeof(RF24NetworkHeader));
+    memcpy(&header,receive_frame-frame_size,sizeof(RF24NetworkHeader));
   }
 }
 
@@ -250,8 +364,8 @@ size_t RF24Mesh::read(RF24NetworkHeader& header,void* message, size_t maxlen)
   if ( available() )
   {
     // Move the pointer back one in the queue 
-    next_frame -= frame_size;
-    uint8_t* frame = next_frame;
+    receive_frame -= frame_size;
+    uint8_t* frame = receive_frame;
       
     // How much buffer size should we actually copy?
     bufsize = min(maxlen,frame_size-sizeof(RF24NetworkHeader));
@@ -260,7 +374,7 @@ size_t RF24Mesh::read(RF24NetworkHeader& header,void* message, size_t maxlen)
     memcpy(&header,frame,sizeof(RF24NetworkHeader));
     memcpy(message,frame+sizeof(RF24NetworkHeader),bufsize);
     
-    IF_SERIAL_DEBUG(printf_P(PSTR("%lu: *****NET RF24Mesh::read Received (%s)\n\r"),rTable.getMillis(),header.toString()));
+    IF_SERIAL_DEBUG(printf_P(PSTR("%lu: *****NET _RF24Mesh::read Received (%s)\n\r"),rTable.getMillis(),header.toString()));
   }
 
   return bufsize;
@@ -271,7 +385,7 @@ bool RF24Mesh::write(RF24NetworkHeader& header, T_MAC mac)
   // Fill out the header
 //	header.from_node = rTable.getCurrentNode().ip;
 	
-	IF_SERIAL_DEBUG(printf_P(PSTR("%lu: NET Sending message(%s) \n\r"),rTable.getMillis(),header.toString()));
+	IF_SERIAL_DEBUG(printf_P(PSTR("%lu: NET 1 Sending message(%s) \n\r"),rTable.getMillis(),header.toString()));
 
   // Build the full frame to send
   memcpy(frame_buffer,&header,sizeof(RF24NetworkHeader));
@@ -282,7 +396,7 @@ bool RF24Mesh::write(RF24NetworkHeader& header, T_MAC mac)
     return enqueue();
   else
     // Otherwise send it out over the air
-	return write(mac);
+	return send_enqueue(); //write(mac);
 }
 
 /******************************************************************/
@@ -292,7 +406,7 @@ bool RF24Mesh::write(RF24NetworkHeader& header,const void* message, size_t len)
   // Fill out the header
 	header.from_node = rTable.getCurrentNode().ip;
 	
-	IF_SERIAL_DEBUG(printf_P(PSTR("%lu: NET Sending message(%s) \n\r"),rTable.getMillis(),header.toString()));
+	IF_SERIAL_DEBUG(printf_P(PSTR("%lu: NET 2 Sending message(%s) \n\r"),rTable.getMillis(),header.toString()));
 
   // Build the full frame to send
   memcpy(frame_buffer,&header,sizeof(RF24NetworkHeader));
@@ -314,6 +428,45 @@ bool RF24Mesh::write(RF24NetworkHeader& header,const void* message, size_t len)
 }
 
 /******************************************************************/
+int RF24Mesh::write()
+{
+	  IF_SERIAL_DEBUG(printf_P(PSTR("%lu: write to air \n\r"),rTable.getMillis()));
+	  size_t bufsize = 0;
+
+	  if ( send_available() )
+	  {
+		shiftleft(send_queue, frame_size, frame_buffer, send_frame_p);
+
+		  // Move the pointer back one in the queue
+	    send_frame_p -= frame_size;
+
+	    RF24NetworkHeader h;
+	    // Copy the next available frame from the queue into the provided buffer
+	    memcpy(&h,frame_buffer,sizeof(RF24NetworkHeader));
+
+	    write(rTable.getShortestMac(h.to_node));
+	    rTable.sentData(h);
+	    IF_SERIAL_DEBUG(printf_P(PSTR("%lu: NET *RF24*Mesh::send to Air (%s)\n\r"),rTable.getMillis(),h.toString()));
+	  }
+
+	  return bufsize;
+}
+
+void RF24Mesh::shiftleft(uint8_t *send_queue, const int frame_size, uint8_t *frame_buffer,  uint8_t *last_pointer)
+{
+	memcpy(frame_buffer, send_queue, frame_size);
+
+	uint8_t* p1 = send_queue;
+	uint8_t* p2 = send_queue + frame_size;
+
+	while (p2<=last_pointer)
+	{
+		memcpy(p1, p2, frame_size);
+		p1 += frame_size;
+		p2 += frame_size;
+	}
+
+}
 
 bool RF24Mesh::write(T_MAC to_mac)
 {
@@ -344,18 +497,7 @@ bool RF24Mesh::write(T_MAC to_mac)
 }
 
 
-/******************************************************************/
 
-const char* RF24NetworkHeader::toString(void) const
-{
-  uint32_t p1;
-  uint32_t p2;
-  memcpy(&p1, &payload,4);
-  memcpy(&p2, &payload + 4,4);
-  static char buffer[125];
-  snprintf_P(buffer,sizeof(buffer),PSTR(" msg_id %04x from ip 0%d to ip 0%d type %c data %lx %lx ip_data_ip:%x ipdata_weight:%x "),id,from_node,to_node,type, p1,p2, ip_data.ip, ip_data.weight);
-  return buffer;
-}
 
 /******************************************************************/
 
@@ -382,6 +524,11 @@ bool RF24Mesh::is_valid_address( uint16_t node )
   return result;
 }
 
+void RF24Mesh::setState(STATES s)
+{
+	state = SENDJOIN;
+	state_time = millis();
+}
 /******************************************************************/
 
 /**
@@ -389,25 +536,38 @@ bool RF24Mesh::is_valid_address( uint16_t node )
  */
 bool RF24Mesh::send_JoinMessage()
 {
+
+
 	RF24NetworkHeader header(rTable.getBroadcastNode().ip, 'J', 0, rTable.getCurrentNode().ip);
   
-	header.ip_data.ip = rTable.getCurrentNode().ip;
-	header.ip_data.weight = rTable.getCurrentNode().weight;
+	header.source_data.ip = rTable.getCurrentNode().ip;
+	header.source_data.weight = rTable.getCurrentNode().weight;
 	IF_SERIAL_DEBUG(printf_P(PSTR("%lu:Sending join message (%s) \n\r"),rTable.getMillis(),header.toString()));
 	return write(header,rTable.getMac(0));
 }
 
-bool RF24Mesh::send_WelcomeMessage(IP_MAC toNode)
+bool RF24Mesh::send_WelcomeAck(T_IP ip)
+{
+
+
+	RF24NetworkHeader header(ip, 'A', 0, rTable.getCurrentNode().ip);
+
+	header.source_data.ip = rTable.getCurrentNode().ip;
+	header.source_data.weight = rTable.getCurrentNode().weight;
+	IF_SERIAL_DEBUG(printf_P(PSTR("%lu:Sending welcome ack message (%s) \n\r"),rTable.getMillis(),header.toString()));
+	return write(header,rTable.getMac(0));
+}
+
+bool RF24Mesh::send_WelcomeMessage(T_IP toNode)
 {
 	unsigned long time = rTable.getMillis();
 	uint64_t payload;
 	memset(&payload,0,8);
 	memcpy(&payload+4,&time,4);
-	RF24NetworkHeader header(toNode.ip, 'W',payload , rTable.getCurrentNode().ip);
-	header.ip_data.ip = rTable.getCurrentNode().ip;
-	header.ip_data.weight = rTable.getCurrentNode().weight;
+	RF24NetworkHeader header(toNode, 'W',payload , rTable.getCurrentNode().ip);
+	header.source_data.ip = rTable.getCurrentNode().ip;
+	header.source_data.weight = rTable.getCurrentNode().weight;
   
-
   printf_P(PSTR("---------------------------------\n\r"));
   IF_SERIAL_DEBUG(printf_P(PSTR("%lu: APP Sending Welcome Message (%s)...\n\r"),rTable.getMillis(),header.toString()));
   return write(header,rTable.getMac(0)); //broadcast mac'ine gonder.
@@ -424,7 +584,7 @@ bool RF24Mesh::send_SensorData(uint64_t data)
 		 return true;
 	}
 
-	if(!rTable.amIJoinedNetwork())
+	if(state != JOINED)
 	{
 		IF_SERIAL_DEBUG(printf_P(PSTR("%lu: send_SensorData, I havent joined yet\n\r"),rTable.getMillis()));
 		callback.sendingFailed(0);
@@ -439,8 +599,8 @@ bool RF24Mesh::send_SensorData(uint64_t data)
 		IF_SERIAL_DEBUG(printf_P(PSTR("%lu: APP Send_SersorData short ip: %d masterip: %d"),rTable.getMillis(),ip,rTable.getMasterNode().ip));
 	}
 	RF24NetworkHeader header(ip,  type, data );
-	header.ip_data.ip = rTable.getCurrentNode().ip; //source ip
-	header.ip_data.weight = 0; //not important
+	header.source_data.ip = rTable.getCurrentNode().ip; //source ip
+	header.source_data.weight = 0; //not important
   
   
   IF_SERIAL_DEBUG(printf_P(PSTR("---------------------------------\n\r")));
@@ -493,10 +653,18 @@ void RF24Mesh::handle_JoinMessage(RF24NetworkHeader& header)
   if ( header.from_node != this->node_address || header.from_node > 00 )
   {
 	  IF_SERIAL_DEBUG(printf_P(PSTR("%lu: handle_J farkli node kaydet ve cevap ver\n\r"),rTable.getMillis()));
-	  rTable.addNearNode(header.ip_data);
-	  send_WelcomeMessage(header.ip_data);
+	  bool shortenedPath = rTable.addNearNode(header.source_data);
+	  if(shortenedPath) //TODO burayi sil
+		  send_JoinMessage();
+	  else
+		  send_WelcomeMessage(header.source_data.ip);
+
+	  setState(JOINRECEIVED);
   }
   rTable.printTable();
+
+  if(available()) printf_P(PSTR("%lu: 2 it is still available  \n\r"),rTable.getMillis());
+    else printf_P(PSTR("%lu: 2 it is not available  \n\r"),rTable.getMillis());
 }
 
 /**
@@ -512,7 +680,7 @@ void RF24Mesh::handle_WelcomeMessage(RF24NetworkHeader& header)
 
   // If this message is from ourselves or the base, don't bother adding it to the active nodes.
   if ( header.from_node != this->node_address || header.from_node > 00 )
-	  if(rTable.addNearNode(header.ip_data))
+	  if(rTable.addNearNode(header.source_data))
 	  {
 		  rTable.setMillis(header.payload);
 		  IF_SERIAL_DEBUG(printf_P(PSTR("%lu: handle_WelcomeMessage, update join status"),rTable.getMillis()));
@@ -521,11 +689,7 @@ void RF24Mesh::handle_WelcomeMessage(RF24NetworkHeader& header)
 
    rTable.printTable();
 
-   if(rTable.amIJoinedNetwork())
-   {
-	   last_join_time = millis();
-	   state = JOINED;
-   }
+
 }
 
 /**
@@ -559,7 +723,7 @@ void RF24Mesh::handle_ForwardData(RF24NetworkHeader& header)
 	  T_IP ip = rTable.getShortestRouteNode().ip;
 	  unsigned char type = 'D';
 
-	  header.ip_data.weight++;
+	  header.source_data.weight++;
 	  header.from_node = rTable.getCurrentNode().ip;
 	  header.to_node = ip;
       if (ip != rTable.getMasterNode().ip)
@@ -585,6 +749,7 @@ void StatusCallback::println(const char * str)
 
 void StatusCallback::sendingFailed(T_MAC node)
 {
+	//TODO buraya fail sebebi gelmeli
 	printf_P(PSTR("%lu: NET On node 0%x has written failed\n\r"),rTable.getMillis(),node);
 }
 
