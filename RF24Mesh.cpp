@@ -730,6 +730,7 @@ void RF24Mesh::handle_ForwardData(RF24NetworkHeader& header)
 	  unsigned char type = 'D';
 
 	  header.source_data.weight++;
+	  header.prev_node = header.from_node;
 	  header.from_node = rTable.getCurrentNode().ip;
 	  header.to_node = ip;
       if (ip != rTable.getMasterNode().ip)

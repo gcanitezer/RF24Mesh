@@ -23,6 +23,7 @@ typedef struct
 struct RF24NetworkHeader
 {
   T_IP from_node; /**< Logical address where the message was generated */
+  T_IP prev_node;
   T_IP to_node; /**< Logical address where the message is going */
   uint16_t id; /**< Sequential message ID, incremented every message */
   uint64_t payload;
@@ -52,7 +53,7 @@ struct RF24NetworkHeader
    * @param _type The type of message which follows.  Only 0-127 are allowed for
    * user messages.
    */
-  RF24NetworkHeader(uint16_t _to, unsigned char _type = 0, uint64_t _data = 0, uint16_t _from = 0): to_node(_to), payload(_data),id(next_id++), type(_type&0x7f), from_node(_from) {}
+  RF24NetworkHeader(uint16_t _to, unsigned char _type = 0, uint64_t _data = 0, uint16_t _from = 0): to_node(_to), payload(_data),id(next_id++), type(_type&0x7f), from_node(_from), prev_node(0) {}
 
   /**
    * Create debugging string
