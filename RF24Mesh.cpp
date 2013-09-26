@@ -148,7 +148,6 @@ void RF24Mesh::updateNetworkTopology(void)
 
 void RF24Mesh::sendAckToWelcome()
 {
-	//TODO doldur sendAckToWelcome
 	int size = rTable.getNumOfWelcomes();
 	T_IP ips[size];
 
@@ -649,19 +648,26 @@ void RF24Mesh::handle_JoinMessage(RF24NetworkHeader& header)
   read(header,0,0);
   IF_SERIAL_DEBUG(printf_P(PSTR("%lu: handle_JoinMessage (%s) \n\r"),rTable.getMillis(),header.toString()));
 
-  // If this message is from ourselves or the base, don't bother adding it to the active nodes.
-  if ( header.from_node != this->node_address || header.from_node > 00 )
+  if(state == JOINED)
   {
-	  IF_SERIAL_DEBUG(printf_P(PSTR("%lu: handle_J farkli node kaydet ve cevap ver\n\r"),rTable.getMillis()));
-	  bool shortenedPath = rTable.addNearNode(header.source_data);
-	  if(shortenedPath) //TODO burayi sil
-		  send_JoinMessage();
-	  else
+	  // If this message is from ourselves or the base, don't bother adding it to the active nodes.
+	  if ( header.from_node != rTable.getShortestRouteNode().ip )
+	  {
+		  IF_SERIAL_DEBUG(printf_P(PSTR("%lu: handle_J farkli node kaydet ve cevap ver\n\r"),rTable.getMillis()));
+		  bool shortenedPath = rTable.addNearNode(header.source_data);
+
 		  send_WelcomeMessage(header.source_data.ip);
 
-	  setState(JOINRECEIVED);
+		  setState(JOINRECEIVED);
+	  }
+	  else //benim bagli oldugum node'dan join mesaji gelmis
+	  {
+		  setState(NJOINED);
+		  rTable.cleanTable();
+	  }
+	  rTable.printTable();
   }
-  rTable.printTable();
+
 
   if(available()) printf_P(PSTR("%lu: 2 it is still available  \n\r"),rTable.getMillis());
     else printf_P(PSTR("%lu: 2 it is not available  \n\r"),rTable.getMillis());
