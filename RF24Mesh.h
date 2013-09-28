@@ -128,7 +128,7 @@ public:
    * Send a message, the current time
    *
    */
-  bool send_SensorData(uint64_t data);
+  bool send_SensorData(uint8_t data[16]);
 
 /**
  * Send an 'N' message, the active node list

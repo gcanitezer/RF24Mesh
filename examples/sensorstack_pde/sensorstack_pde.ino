@@ -43,6 +43,8 @@
 #include <SPI.h>
 #include "nodeconfig.h"
 #include "printf.h"
+#include <stdint.h>
+
 // This is for git version tracking.  Safe to ignore
 #ifdef VERSION_H
 #include "version.h"
@@ -104,10 +106,13 @@ void setup(void)
 
 void loop(void)
 {
+  uint8_t data[16];
+  
+  data[0] = message_no++;
   // Pump the network regularly
   network.loop();
   if (this_node != 0 && network.isJoined() && millis()%10000 == 0)
-  network.send_SensorData(message_no++);
+  network.send_SensorData(data);
   
   
 }

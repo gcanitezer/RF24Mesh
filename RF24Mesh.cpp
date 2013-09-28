@@ -536,8 +536,8 @@ void RF24Mesh::setState(STATES s)
 bool RF24Mesh::send_JoinMessage()
 {
 
-
-	RF24NetworkHeader header(rTable.getBroadcastNode().ip, 'J', 0, rTable.getCurrentNode().ip);
+	uint64_t data = 0;
+	RF24NetworkHeader header(rTable.getBroadcastNode().ip, 'J', data, rTable.getCurrentNode().ip);
   
 	header.source_data.ip = rTable.getCurrentNode().ip;
 	header.source_data.weight = rTable.getCurrentNode().weight;
@@ -548,8 +548,8 @@ bool RF24Mesh::send_JoinMessage()
 bool RF24Mesh::send_WelcomeAck(T_IP ip)
 {
 
-
-	RF24NetworkHeader header(ip, 'A', 0, rTable.getCurrentNode().ip);
+	uint64_t data = 0;
+	RF24NetworkHeader header(ip, 'A', data, rTable.getCurrentNode().ip);
 
 	header.source_data.ip = rTable.getCurrentNode().ip;
 	header.source_data.weight = rTable.getCurrentNode().weight;
@@ -562,7 +562,7 @@ bool RF24Mesh::send_WelcomeMessage(T_IP toNode)
 	unsigned long time = rTable.getMillis();
 	uint64_t payload;
 	memset(&payload,0,8);
-	memcpy(&payload+4,&time,4);
+	memcpy(&payload,&time,4);
 	RF24NetworkHeader header(toNode, 'W',payload , rTable.getCurrentNode().ip);
 	header.source_data.ip = rTable.getCurrentNode().ip;
 	header.source_data.weight = rTable.getCurrentNode().weight;
@@ -575,7 +575,7 @@ bool RF24Mesh::send_WelcomeMessage(T_IP toNode)
 /**
  * Send a 'T' message, the current time
  */
-bool RF24Mesh::send_SensorData(uint64_t data)
+bool RF24Mesh::send_SensorData(uint8_t data[16])
 {
 	if(rTable.amImaster())
 	{

@@ -24,10 +24,10 @@ RoutingTable::~RoutingTable(void)
 }
 
 
-void RoutingTable::setMillis(uint64_t data)
+void RoutingTable::setMillis(uint8_t data[16])
 {
 	unsigned long a;
-	memcpy(&a,&data + 4, 4);
+	memcpy(&a,&data, 4);
 	//unsigned long a =  data;
 	millis_delta = millis() - a;
 

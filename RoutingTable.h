@@ -56,7 +56,7 @@ public:
 	int8_t checkTable(T_IP ip);
 	T_MAC getMac(T_IP ip);
 	T_MAC getShortestMac(T_IP ip);
-	void setMillis(uint64_t data);
+	void setMillis(uint8_t data[16]);
 	unsigned long getMillis();
 	bool removeUnreacheable(IP_MAC nearNode);
 	int8_t getShortestNodePosition();

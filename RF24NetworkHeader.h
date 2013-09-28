@@ -8,6 +8,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <string.h>
 
 #define T_IP uint16_t
 #define T_MAC uint64_t
@@ -26,7 +27,7 @@ struct RF24NetworkHeader
   T_IP prev_node;
   T_IP to_node; /**< Logical address where the message is going */
   uint16_t id; /**< Sequential message ID, incremented every message */
-  uint64_t payload;
+  uint8_t payload[16];
   IP_MAC source_data; //it is used as ip and weight info for join data; original ip and hop count for sensor data
   unsigned char type; /**< Type of the packet.  0-127 are user-defined types, 128-255 are reserved for system */
 
@@ -53,7 +54,18 @@ struct RF24NetworkHeader
    * @param _type The type of message which follows.  Only 0-127 are allowed for
    * user messages.
    */
-  RF24NetworkHeader(uint16_t _to, unsigned char _type = 0, uint64_t _data = 0, uint16_t _from = 0): to_node(_to), payload(_data),id(next_id++), type(_type&0x7f), from_node(_from), prev_node(0) {}
+  RF24NetworkHeader(uint16_t _to, unsigned char _type = 0, uint64_t _data = 0, uint16_t _from = 0): to_node(_to), id(next_id++), type(_type&0x7f), from_node(_from), prev_node(0) {
+	  memcpy(&payload, &_data,8);
+
+  }
+
+  RF24NetworkHeader(uint16_t _to, unsigned char _type, uint8_t _data[16], uint16_t _from = 0): to_node(_to), id(next_id++), type(_type&0x7f), from_node(_from), prev_node(0) {
+
+	  for(int i=0;i<16;i++)
+	  {
+		  payload[i] = _data[i];
+	  }
+  }
 
   /**
    * Create debugging string
