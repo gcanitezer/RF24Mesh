@@ -59,14 +59,29 @@ RF24Mesh network(radio, callme);
 uint16_t this_node;
 
 long message_no = 0;
+#include <SoftwareSerial.h>
+
+SoftwareSerial mySerial(4,5);
+
+int serial_putc( char c, FILE * ) 
+{
+  mySerial.write( c );
+
+  return c;
+} 
+
+void printf_begin(void)
+{
+  mySerial.begin(115200);
+  fdevopen( &serial_putc, 0 );
+}
+
 
 void setup(void)
 {
   //
   // Print preamble
   //
-  
-  Serial.begin(57600);
   printf_begin();
   printf_P(PSTR("\n\rRF24Mesh/examples/sensorstack_pde/\n\r"));
   printf_P(PSTR("VERSION: %s\n\r"),program_version);
