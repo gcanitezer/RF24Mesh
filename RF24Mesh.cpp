@@ -100,7 +100,7 @@ void RF24Mesh::slowloop()
 /******************************************************************/
 void RF24Mesh::updateNetworkTopology(void)
 {
-	if (!rTable.amImaster() && (state == INIT || state == NJOINED))
+	if (!rTable.amImaster() && (isState(INIT) || isState(NJOINED)))
 	{
 		if (last_join_time == 0 || (millis() - last_join_time) > JOIN_DURATION) //bir dakika
 		{
@@ -111,11 +111,16 @@ void RF24Mesh::updateNetworkTopology(void)
 			IF_SERIAL_DEBUG(printf_P(PSTR("%lu: Join network called last_join_time: %lu \n\r"),rTable.getMillis(),last_join_time));
 		}
 	}
-	else if (state == SENDJOIN)
+	else if (isState(NEW_JOINED))
+	{
+		setState(JOINED);
+		send_UpdateWeight();
+	}
+	else if (isState(SENDJOIN))
 	{
 		if (millis() - state_time >= JOIN_WAIT_WELCOME)
 		{
-			sendAckToWelcome();
+			sendAckToWelcome(); //TODO sanki buna gerek yok zaten ici bos
 			if(rTable.amIJoinedNetwork())
 			{
 				setState(JOINED);
@@ -129,7 +134,8 @@ void RF24Mesh::updateNetworkTopology(void)
 			}
 		}
 	}
-	else if(state == JOINRECEIVED)
+
+/*	else if(isState(JOINRECEIVED))
 	{
 		if(rTable.isPathShortened())
 		{
@@ -142,32 +148,34 @@ void RF24Mesh::updateNetworkTopology(void)
 			sendWelcomeToJoin();
 		}
 	}
-
+*/
 
 }
 
 void RF24Mesh::sendAckToWelcome()
 {
+	//TODO doldur sendAckToWelcome
 	int size = rTable.getNumOfWelcomes();
 	T_IP ips[size];
 
 	for(int i=0;i<size;i++)
 	{
-		send_WelcomeAck(ips[i]);
-		rTable.setConnected(ips[i]);
+		//send_UpdateWeight(ips[i]);
+		//rTable.setConnected(ips[i]);
 	}
 
 }
 
 void RF24Mesh::sendWelcomeToJoin()
 {
+	//TODO doldur. sendWelcomeToJoin
 	int size = rTable.getNumOfJoines();
 	T_IP ips[size];
 
 	for(int i=0;i<size;i++)
 	{
-		send_WelcomeMessage(ips[i]);
-		rTable.setWelcomeMessageSent(ips[i]);
+		//send_WelcomeMessage(ips[i]);
+		//rTable.setWelcomeMessageSent(ips[i]);
 
 	}
 }
@@ -262,7 +270,7 @@ void RF24Mesh::listenRadio()
 		}
 	  }
 
-	if(state == NJOINED || state == INIT)
+	if(state == SENDJOIN)
 	{
 			wait = (millis() - stime > JOIN_WAIT_WELCOME) ? false : true;
 	}
@@ -400,7 +408,7 @@ bool RF24Mesh::write(RF24NetworkHeader& header, T_MAC mac)
 
 /******************************************************************/
 
-bool RF24Mesh::write(RF24NetworkHeader& header,const void* message, size_t len)
+bool RF24Mesh::write(RF24NetworkHeader& header)
 {
   // Fill out the header
 	header.from_node = rTable.getCurrentNode().ip;
@@ -409,13 +417,6 @@ bool RF24Mesh::write(RF24NetworkHeader& header,const void* message, size_t len)
 
   // Build the full frame to send
   memcpy(frame_buffer,&header,sizeof(RF24NetworkHeader));
-  if (len)
-    memcpy(frame_buffer + sizeof(RF24NetworkHeader),message,min(frame_size-sizeof(RF24NetworkHeader),len));
-
-  if (len)
-  {
-    IF_SERIAL_DEBUG(const uint16_t* i = reinterpret_cast<const uint16_t*>(message);printf_P(PSTR("%lu: NET message %04x\n\r"),rTable.getMillis(),*i));
-  }
 
   // If the user is trying to send it to himself
   if ( header.to_node == rTable.getCurrentNode().ip )
@@ -525,8 +526,15 @@ bool RF24Mesh::is_valid_address( uint16_t node )
 
 void RF24Mesh::setState(STATES s)
 {
-	state = SENDJOIN;
+	IF_SERIAL_DEBUG(printf_P(PSTR("setState %d\n\r"), s));
+
+	state = s;
 	state_time = millis();
+}
+
+bool RF24Mesh::isState(STATES s)
+{
+	return state == s;
 }
 /******************************************************************/
 
@@ -545,15 +553,16 @@ bool RF24Mesh::send_JoinMessage()
 	return write(header,rTable.getMac(0));
 }
 
-bool RF24Mesh::send_WelcomeAck(T_IP ip)
+bool RF24Mesh::send_UpdateWeight()
 {
 
 	uint64_t data = 0;
-	RF24NetworkHeader header(ip, 'A', data, rTable.getCurrentNode().ip);
+	RF24NetworkHeader header(rTable.getBroadcastNode().ip, 'U', data, rTable.getCurrentNode().ip);
 
 	header.source_data.ip = rTable.getCurrentNode().ip;
 	header.source_data.weight = rTable.getCurrentNode().weight;
-	IF_SERIAL_DEBUG(printf_P(PSTR("%lu:Sending welcome ack message (%s) \n\r"),rTable.getMillis(),header.toString()));
+	header.prev_node = rTable.getShortestRouteNode().ip;
+	IF_SERIAL_DEBUG(printf_P(PSTR("%lu:Sending update weight (%s) \n\r"),rTable.getMillis(),header.toString()));
 	return write(header,rTable.getMac(0));
 }
 
@@ -604,38 +613,27 @@ bool RF24Mesh::send_SensorData(uint8_t data[16])
   
   IF_SERIAL_DEBUG(printf_P(PSTR("---------------------------------\n\r")));
   printf_P(PSTR("%lu: APP Sending send_SensorData %s ...\n\r"),rTable.getMillis(), header.toString());
-  bool result = write(header,0,0);
+  bool result = write(header);
+  int trycount=0;
   while (!result)
   {
   	  if(!rTable.removeUnreacheable(rTable.getShortestRouteNode()))//There are no neighbour nodes
   	  {
-  		  state = NJOINED;
+  		  setState(NJOINED);
   		  //goker joinNetwork();
   		  return false;
   	  }
 
 	  IF_SERIAL_DEBUG(printf_P(PSTR("%lu: APP Repeating failed send_SensorData, (%s)"),rTable.getMillis(),header.toString()));
-	  result = write(header,0,0);
+	  result = write(header);
+	  trycount++;
+	  if(trycount > 10)
+		  return false;
   }
   return result;
 }
 
-/**
- * Send an 'N' message, the active node list
- */
-bool RF24Mesh::send_N(uint16_t to)
-{
-  RF24NetworkHeader header(/*to node*/ to, /*type*/ 'N' /*Time*/);
 
-  int i = rTable.getTableSize();
-  void* table = rTable.getTable(); 
-  
-  IF_SERIAL_DEBUG(printf_P(PSTR("---------------------------------\n\r")));
-  IF_SERIAL_DEBUG(printf_P(PSTR("%lu: APP Sending active nodes to 0%o...\n\r"),rTable.getMillis(),to));
-  //bool result = write(header,active_nodes,sizeof(active_nodes));
-  bool result = write(header,table,i);
-  return result;
-}
 
 /**
  * Handle a 'J' message
@@ -654,11 +652,8 @@ void RF24Mesh::handle_JoinMessage(RF24NetworkHeader& header)
 	  if ( header.from_node != rTable.getShortestRouteNode().ip )
 	  {
 		  IF_SERIAL_DEBUG(printf_P(PSTR("%lu: handle_J farkli node kaydet ve cevap ver\n\r"),rTable.getMillis()));
-		  bool shortenedPath = rTable.addNearNode(header.source_data);
-
 		  send_WelcomeMessage(header.source_data.ip);
 
-		  setState(JOINRECEIVED);
 	  }
 	  else //benim bagli oldugum node'dan join mesaji gelmis
 	  {
@@ -669,10 +664,41 @@ void RF24Mesh::handle_JoinMessage(RF24NetworkHeader& header)
   }
 
 
-  if(available()) printf_P(PSTR("%lu: 2 it is still available  \n\r"),rTable.getMillis());
-    else printf_P(PSTR("%lu: 2 it is not available  \n\r"),rTable.getMillis());
+ // if(available()) printf_P(PSTR("%lu: there are more messages  \n\r"),rTable.getMillis());
+ //   else printf_P(PSTR("%lu: there is not more message  \n\r"),rTable.getMillis());
 }
 
+unsigned short int RF24Mesh::getMyIP()
+{
+	return rTable.getCurrentNode().ip;
+}
+
+void RF24Mesh::handle_UpdateWeightMessage(RF24NetworkHeader& header)
+{
+
+  read(header,0,0);
+  IF_SERIAL_DEBUG(printf_P(PSTR("%lu: handle_UpdateWeightMessage (%s) \n\r"),rTable.getMillis(),header.toString()));
+
+  if(state == JOINED)
+  {
+	  // If this message is from ourselves or the base, don't bother adding it to the active nodes.
+		if (header.from_node != rTable.getShortestRouteNode().ip
+				&& header.prev_node != getMyIP())
+	  {
+		  IF_SERIAL_DEBUG(printf_P(PSTR("%lu: handle_U farkli node kaydet ve cevap ver\n\r"),rTable.getMillis()));
+		  bool shortenedPath = rTable.addNearNode(header.source_data);
+		  if(shortenedPath)
+		  {
+			  send_UpdateWeight();
+		  }
+	  }
+	  else //msg came from my child about me; omit the msg
+	  {
+
+	  }
+	  rTable.printTable();
+  }
+}
 /**
  * Handle a 'T' message
  *
@@ -684,18 +710,23 @@ void RF24Mesh::handle_WelcomeMessage(RF24NetworkHeader& header)
   read(header,0,0);
   IF_SERIAL_DEBUG(printf_P(PSTR("%lu: handle_WelcomeMessage (%s) \n\r"),rTable.getMillis(),header.toString()));
 
-  // If this message is from ourselves or the base, don't bother adding it to the active nodes.
-  if ( header.from_node != this->node_address || header.from_node > 00 )
-	  if(rTable.addNearNode(header.source_data))
-	  {
-		  rTable.setMillis(header.payload);
-		  IF_SERIAL_DEBUG(printf_P(PSTR("%lu: handle_WelcomeMessage, update join status"),rTable.getMillis()));
-		  send_JoinMessage();
-	  }
-
-   rTable.printTable();
-
-
+  if(state == SENDJOIN)
+  {
+	  // If this message is from ourselves or the base, don't bother adding it to the active nodes.
+	  if ( header.from_node != this->node_address)
+		  if(rTable.addNearNode(header.source_data))
+		  {
+			  rTable.setMillis(header.payload);
+			  IF_SERIAL_DEBUG(printf_P(PSTR("%lu: handle_WelcomeMessage, update join status\n\r"),rTable.getMillis()));
+			  //send_JoinMessage(); //TODO burasi sanki update join olmali
+			  setState(NEW_JOINED);
+		  }
+	   rTable.printTable();
+  }
+  else
+  {
+	  IF_SERIAL_DEBUG(printf_P(PSTR("%lu: OMITTING WelcomeMessage (%s) \n\r"),rTable.getMillis(),header.toString()));
+  }
 }
 
 /**

@@ -49,7 +49,7 @@ public:
  * This class implements an OSI Network Layer using nRF24L01(+) radios driven
  * by RF24 library.
  */
-typedef enum  {INIT, NJOINED, SENDJOIN, JOINRECEIVED, JOINED} STATES;
+typedef enum  {INIT = 0, NJOINED, SENDJOIN, JOINRECEIVED, NEW_JOINED, JOINED} STATES;
 
 class RF24Mesh
 {
@@ -122,7 +122,7 @@ public:
    * @param len The size of the message 
    * @return Whether the message was successfully received 
    */
-  bool write(RF24NetworkHeader& header,const void* message, size_t len);
+  bool write(RF24NetworkHeader& header);
   
   /**
    * Send a message, the current time
@@ -130,16 +130,11 @@ public:
    */
   bool send_SensorData(uint8_t data[16]);
 
-/**
- * Send an 'N' message, the active node list
- */
-  bool send_N(uint16_t to);
-
   bool send_WelcomeMessage(T_IP);
 
   bool send_JoinMessage();
 
-  bool send_WelcomeAck(T_IP ip);
+  bool send_UpdateWeight();
 /**
  * Handle a 'T' message
  *
@@ -154,6 +149,7 @@ void handle_DataMessage(RF24NetworkHeader& header);
 void handle_ForwardData(RF24NetworkHeader& header);
 
 void handle_JoinMessage(RF24NetworkHeader& header);
+void handle_UpdateWeightMessage(RF24NetworkHeader& header);
 
 /**
  * Add a particular node to the current list of active nodes
@@ -173,6 +169,7 @@ protected:
 	void slowloop();
 
 	void setState(STATES s);
+	bool isState(STATES s);
 
   void open_pipes(void);
   uint16_t find_node( uint16_t current_node, uint16_t target_node );
@@ -190,6 +187,8 @@ protected:
   void sendWelcomeToJoin();
   void handlePacket();
   void sendPackets();
+	unsigned short int getMyIP();
+
 private:
   RF24& radio; /**< Underlying radio driver, provides link/physical layers */ 
   StatusCallback& callback;
@@ -207,7 +206,7 @@ private:
   //uint16_t node_mask; /**< The bits which contain signfificant node address information */
   long last_join_time;
 	static const int JOIN_DURATION = 60000;
-	static const int JOIN_WAIT_WELCOME = 10000;
+	static const int JOIN_WAIT_WELCOME = 30000;
 
 	unsigned long state_time; //use millis()
 	STATES state;

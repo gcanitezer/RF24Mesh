@@ -67,14 +67,16 @@ SoftwareSerial mySerial(4,5);
 
 int serial_putc( char c, FILE * ) 
 {
-  mySerial.write( c );
+  Serial.write(c);
+  //mySerial.write( c );
 
   return c;
 } 
 
 void printf_begin(void)
 {
-  mySerial.begin(115200);
+  Serial.begin(115200);
+  //mySerial.begin(115200);
   fdevopen( &serial_putc, 0 );
 }
 
@@ -88,6 +90,7 @@ void setup(void)
   printf_P(PSTR("\n\rRF24Mesh/examples/sensorstack_pde/\n\r"));
   printf_P(PSTR("VERSION: %s\n\r"),program_version);
   
+  printf_P(PSTR("sizeof Header %d\n\r"), sizeof(RF24NetworkHeader));
   //
   // Pull node address out of eeprom 
   //
@@ -108,7 +111,7 @@ void loop(void)
 {
   uint8_t data[16];
   
-  data[0] = message_no++;
+  data[4] = message_no++;
   // Pump the network regularly
   network.loop();
   if (this_node != 0 && network.isJoined() && millis()%10000 == 0)

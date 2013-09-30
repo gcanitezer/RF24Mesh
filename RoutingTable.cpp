@@ -239,31 +239,31 @@ void RoutingTable::printTable()
 
 bool RoutingTable::isPathShortened()
 {
-//TODO
+//TODO isPathShortened
 }
 void RoutingTable::connectShortened()
 {
-//TODO
+//TODO connectShortened
 }
 
 int RoutingTable::getNumOfWelcomes()
 {
-//TODO
+//TODO getNumOfWelcomes
 }
 
 int RoutingTable::getNumOfJoines()
 {
-//TODO
+//TODO getNumOfJoines
 }
 
 void RoutingTable::setWelcomeMessageSent(T_IP ip)
 {
-//TODO
+//TODO setWelcomeMessageSent
 }
 
 void RoutingTable::setConnected(T_IP ip)
 {
-//TODO
+//TODO setConnected
 }
 
 T_MAC RoutingTable::getMac(T_IP ip)
