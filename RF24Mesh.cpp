@@ -118,7 +118,7 @@ void RF24Mesh::updateNetworkTopology(void)
 	}
 	else if (isState(SENDJOIN))
 	{
-		if (millis() - state_time >= JOIN_WAIT_WELCOME)
+		if (millis() - state_time >= JOIN_WAIT_WELCOME*2)
 		{
 			sendAckToWelcome(); //TODO sanki buna gerek yok zaten ici bos
 			if(rTable.amIJoinedNetwork())
