@@ -47,7 +47,7 @@
 #ifdef VERSION_H
 #include "version.h"
 #else
-const char program_version[] = "1.0";
+const char program_version[] = "01.10.2013";
 #endif
 
 StatusCallback callme;
