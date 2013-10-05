@@ -111,6 +111,17 @@ void RF24Mesh::updateNetworkTopology(void)
 			IF_SERIAL_DEBUG(printf_P(PSTR("%lu: Join network called last_join_time: %lu \n\r"),rTable.getMillis(),last_join_time));
 		}
 	}
+	else if (!rTable.amImaster() && (isState(JOINED)))
+		{
+			if (last_join_time == 0 || (millis() - last_join_time) > JOIN_DURATION) //bir dakika
+			{
+
+				joinNetwork();
+				setState(SENDJOIN);
+
+				IF_SERIAL_DEBUG(printf_P(PSTR("%lu: Join network called last_join_time: %lu \n\r"),rTable.getMillis(),last_join_time));
+			}
+		}
 	else if (isState(NEW_JOINED))
 	{
 		setState(JOINED);
@@ -335,7 +346,7 @@ bool RF24Mesh::send_enqueue()
 	}
 	else
 	{
-		printf_P(PSTR("failed to write send queue\n\r"));
+		printf_P(PSTR("*******WARNING!!!!!!******* failed to write send queue Memory is not enough for message buffer\n\r"));
 	}
 
 	return result;
@@ -596,7 +607,7 @@ bool RF24Mesh::send_SensorData(uint8_t data[16])
 
 	if(state != JOINED)
 	{
-		IF_SERIAL_DEBUG(printf_P(PSTR("%lu: send_SensorData, I havent joined yet\n\r"),rTable.getMillis()));
+		printf_P(PSTR("%lu: send_SensorData, I havent joined yet\n\r"),rTable.getMillis());
 		callback.sendingFailed(0);
 		return false;
 	}
@@ -681,7 +692,7 @@ void RF24Mesh::handle_UpdateWeightMessage(RF24NetworkHeader& header)
   read(header,0,0);
   IF_SERIAL_DEBUG(printf_P(PSTR("%lu: handle_UpdateWeightMessage (%s) \n\r"),rTable.getMillis(),header.toString()));
 
-  if(state == JOINED)
+  if(isState(JOINED))
   {
 	  // If this message is from ourselves or the base, don't bother adding it to the active nodes.
 		if (header.from_node != rTable.getShortestRouteNode().ip
@@ -699,6 +710,16 @@ void RF24Mesh::handle_UpdateWeightMessage(RF24NetworkHeader& header)
 
 	  }
 	  rTable.printTable();
+  }
+  else if(isState(NJOINED))
+  {
+	  IF_SERIAL_DEBUG(printf_P(PSTR("%lu: handle_U farkli node kaydet ve cevap ver\n\r"),rTable.getMillis()));
+	  bool shortenedPath = rTable.addNearNode(header.source_data);
+	  if(shortenedPath)
+	  {
+		  send_UpdateWeight();
+		  setState(JOINED);
+	  }
   }
 }
 /**
@@ -720,7 +741,6 @@ void RF24Mesh::handle_WelcomeMessage(RF24NetworkHeader& header)
 		  {
 			  rTable.setMillis(header.payload);
 			  IF_SERIAL_DEBUG(printf_P(PSTR("%lu: handle_WelcomeMessage, update join status\n\r"),rTable.getMillis()));
-			  //send_JoinMessage(); //TODO burasi sanki update join olmali
 			  setState(NEW_JOINED);
 		  }
 	   rTable.printTable();

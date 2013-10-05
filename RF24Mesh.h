@@ -205,8 +205,8 @@ private:
   //uint8_t parent_pipe; /**< The pipe our parent uses to listen to us */
   //uint16_t node_mask; /**< The bits which contain signfificant node address information */
   long last_join_time;
-	static const int JOIN_DURATION = 60000;
-	static const int JOIN_WAIT_WELCOME = 30000;
+	static const int JOIN_DURATION = 120000;
+	static const int JOIN_WAIT_WELCOME = 5000;
 
 	unsigned long state_time; //use millis()
 	STATES state;
