@@ -52,9 +52,9 @@ void RF24Mesh::begin(uint8_t _channel, T_IP _node_address )
   radio.begin();
   // Set up the radio the way we want it to look
   radio.setChannel(_channel);
-  radio.setDataRate(RF24_1MBPS);
-  radio.setPALevel(RF24_PA_HIGH);
-  radio.setCRCLength(RF24_CRC_16);
+  radio.setDataRate(RF24_250KBPS);
+  radio.setPALevel(RF24_PA_MAX);
+  radio.setCRCLength(RF24_CRC_8);
   radio.setRetries(5,15);
   radio.setAutoAck(false);
 
@@ -206,6 +206,8 @@ void RF24Mesh::handlePacket()
 	case 'F':
 	  handle_ForwardData(header);
 	  break;
+	case 'U':
+	  handle_UpdateWeightMessage(header);
     default:
 	  printf_P(PSTR("*** WARNING *** Unknown message type %s\n\r"),header.toString());
       read(header,0,0);

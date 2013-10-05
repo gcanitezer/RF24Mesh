@@ -104,7 +104,7 @@ void setup(void)
 
   SPI.begin();
   
-  network.begin(/*channel*/ 125, /*node address*/ this_node );
+  network.begin(/*channel*/ 88, /*node address*/ this_node );
 }
 
 void loop(void)

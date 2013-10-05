@@ -67,7 +67,7 @@ void setup(void)
   // Print preamble
   //
   
-  Serial.begin(57600);
+  Serial.begin(115200);
   printf_begin();
   printf_P(PSTR("\n\rRF24Mesh/examples/sensorstack_root/\n\r"));
   printf_P(PSTR("VERSION: %s\n\r"),program_version);
@@ -85,7 +85,7 @@ void setup(void)
 
   SPI.begin();
   
-  network.begin(/*channel*/ 125, /*node address*/ this_node );
+  network.begin(/*channel*/ 88, /*node address*/ this_node );
 }
 
 void loop(void)
