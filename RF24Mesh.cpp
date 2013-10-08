@@ -513,10 +513,11 @@ bool RF24Mesh::write(T_MAC to_mac)
   radio.openWritingPipe(to_mac);
 
   // Retry a few times
-  short attempts = 5;
+  short attempts = 15;
   do
   {
     ok = radio.write( frame_buffer, frame_size );
+    IF_SERIAL_DEBUG(printf_P(PSTR("%lu: Tried to send packet result:%d attempt %d \n\r"),rTable.getMillis(),ok, attempts) );
   }
   while ( !ok && --attempts );
 
@@ -758,7 +759,7 @@ void RF24Mesh::handle_WelcomeMessage(RF24NetworkHeader& header)
   read(header,0,0);
   IF_SERIAL_DEBUG(printf_P(PSTR("%lu: handle_WelcomeMessage (%s) \n\r"),rTable.getMillis(),header.toString()));
 
-  if(state == SENDJOIN)
+//  if(isState(SENDJOIN) || isState(JOINED))
   {
 	  // If this message is from ourselves or the base, don't bother adding it to the active nodes.
 	  if ( header.from_node != this->node_address)
@@ -770,9 +771,9 @@ void RF24Mesh::handle_WelcomeMessage(RF24NetworkHeader& header)
 		  }
 	   rTable.printTable();
   }
-  else
+ // else
   {
-	  IF_SERIAL_DEBUG(printf_P(PSTR("%lu: OMITTING WelcomeMessage (%s) \n\r"),rTable.getMillis(),header.toString()));
+//	  IF_SERIAL_DEBUG(printf_P(PSTR("%lu: OMITTING WelcomeMessage (%s) \n\r"),rTable.getMillis(),header.toString()));
   }
 }
 
@@ -835,7 +836,7 @@ void StatusCallback::println(const char * str)
 void StatusCallback::sendingFailed(T_MAC node)
 {
 	//TODO buraya fail sebebi gelmeli
-	printf_P(PSTR("%lu: NET On node 0%x has written failed\n\r"),rTable.getMillis(),node);
+	printf_P(PSTR("%lu: ******NET On node 0%x has written failed******\n\r"),rTable.getMillis(),node);
 }
 
 void StatusCallback::incomingData(RF24NetworkHeader packet)
