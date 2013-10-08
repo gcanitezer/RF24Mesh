@@ -113,7 +113,7 @@ void RF24Mesh::updateNetworkTopology(void)
 	{
 		if (last_join_time == 0 || (millis() - last_join_time) > JOIN_DURATION) //bir dakika
 		{
-
+			setState(NJOINED);
 			joinNetwork();
 			setState(SENDJOIN);
 
@@ -124,7 +124,7 @@ void RF24Mesh::updateNetworkTopology(void)
 		{
 			if (last_join_time == 0 || (millis() - last_join_time) > JOIN_DURATION) //bir dakika
 			{
-
+				setState(NJOINED);
 				joinNetwork();
 				setState(SENDJOIN);
 
@@ -241,10 +241,18 @@ void RF24Mesh::handlePacket()
 
 void RF24Mesh::sendPackets()
 {
+	static int error_rate = 0;
 	// Is there anything ready for us?
 	  while ( send_available() )
 	  {
-		  write();
+		  if(write() == false)
+			  error_rate++;
+	  }
+
+	  if (error_rate > 4)
+	  {
+		  setState(NJOINED);
+		  IF_SERIAL_DEBUG(printf_P(PSTR("%lu: Fazla gonderme hatasi oldugu icin network dustu\n\r"),rTable.getMillis()));
 	  }
 }
 
@@ -455,7 +463,7 @@ bool RF24Mesh::write(RF24NetworkHeader& header)
 int RF24Mesh::write()
 {
 	  IF_SERIAL_DEBUG(printf_P(PSTR("%lu: write to air \n\r"),rTable.getMillis()));
-	  size_t bufsize = 0;
+	  bool result = false;
 
 	  if ( send_available() )
 	  {
@@ -468,12 +476,12 @@ int RF24Mesh::write()
 	    // Copy the next available frame from the queue into the provided buffer
 	    memcpy(&h,frame_buffer,sizeof(RF24NetworkHeader));
 
-	    write(rTable.getMac(h.to_node));
+	    result = write(rTable.getMac(h.to_node));
 	    rTable.sentData(h);
 	    IF_SERIAL_DEBUG(printf_P(PSTR("%lu: NET *RF24*Mesh::sent to Air to mac: %lx (%s)\n\r"),rTable.getMillis(), rTable.getMac(h.to_node), h.toString()));
 	  }
 
-	  return bufsize;
+	  return result;
 }
 
 void RF24Mesh::shiftleft(uint8_t *send_queue, const int frame_size, uint8_t *frame_buffer,  uint8_t *last_pointer)
