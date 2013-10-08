@@ -56,12 +56,14 @@ void RF24Mesh::begin(uint8_t _channel, T_IP _node_address )
   radio.setPALevel(RF24_PA_MAX);
   radio.setCRCLength(RF24_CRC_8);
   radio.setRetries(5,15);
-  radio.setAutoAck(false);
 
 
-  radio.openReadingPipe(0, rTable.getMac(0));
-  //radio.openReadingPipe(1, rTable.getCurrentNode().mac);
-  
+  radio.openReadingPipe(0, rTable.getBroadcastMac());
+  radio.openReadingPipe(1, rTable.getMac(_node_address));
+
+  radio.setAutoAck(0, false);
+  radio.setAutoAck(1, true);
+
   radio.startListening();
 
   // Spew debugging state about the radio
@@ -72,10 +74,17 @@ void RF24Mesh::begin(uint8_t _channel, T_IP _node_address )
 
 void RF24Mesh::loop(void)
 {
+	static int i=0;
 
 	fastloop();
 
-	slowloop();
+	i++;
+
+	//if(i == 10)
+	{
+		slowloop();
+		i = 0;
+	}
 
 }
 
@@ -125,6 +134,7 @@ void RF24Mesh::updateNetworkTopology(void)
 	else if (isState(NEW_JOINED))
 	{
 		setState(JOINED);
+		last_join_time = millis();
 		send_UpdateWeight();
 	}
 	else if (isState(SENDJOIN))
@@ -219,6 +229,7 @@ void RF24Mesh::handlePacket()
 	  break;
 	case 'U':
 	  handle_UpdateWeightMessage(header);
+	  break;
     default:
 	  printf_P(PSTR("*** WARNING *** Unknown message type %s\n\r"),header.toString());
       read(header,0,0);
@@ -437,7 +448,7 @@ bool RF24Mesh::write(RF24NetworkHeader& header)
     return enqueue();
   else
     // Otherwise send it out over the air
-	return write(rTable.getShortestMac(header.to_node));
+	  return send_enqueue(); //write(mac); return write(rTable.getMac(header.to_node));
 }
 
 /******************************************************************/
@@ -457,9 +468,9 @@ int RF24Mesh::write()
 	    // Copy the next available frame from the queue into the provided buffer
 	    memcpy(&h,frame_buffer,sizeof(RF24NetworkHeader));
 
-	    write(rTable.getShortestMac(h.to_node));
+	    write(rTable.getMac(h.to_node));
 	    rTable.sentData(h);
-	    IF_SERIAL_DEBUG(printf_P(PSTR("%lu: NET *RF24*Mesh::send to Air (%s)\n\r"),rTable.getMillis(),h.toString()));
+	    IF_SERIAL_DEBUG(printf_P(PSTR("%lu: NET *RF24*Mesh::sent to Air to mac: %lx (%s)\n\r"),rTable.getMillis(), rTable.getMac(h.to_node), h.toString()));
 	  }
 
 	  return bufsize;
@@ -490,6 +501,14 @@ bool RF24Mesh::write(T_MAC to_mac)
   // First, stop listening so we can talk
   radio.stopListening();
  
+  if (to_mac != rTable.getBroadcastMac())
+  {
+	  IF_SERIAL_DEBUG(printf_P(PSTR("%lu: It is not broadcast mac so acknowledge is true %lu \n\r"),rTable.getMillis(),to_mac) );
+	  radio.setAutoAck(0,true);
+  }
+  else
+	  radio.setAutoAck(0,false);
+
   // Open the correct pipe for writing.  
   radio.openWritingPipe(to_mac);
 
@@ -500,8 +519,10 @@ bool RF24Mesh::write(T_MAC to_mac)
     ok = radio.write( frame_buffer, frame_size );
   }
   while ( !ok && --attempts );
+
   // Now, continue listening
   radio.startListening();
+  radio.setAutoAck(0,false);
 
   if(!ok)
 	  callback.sendingFailed(to_mac);
@@ -563,7 +584,7 @@ bool RF24Mesh::send_JoinMessage()
 	header.source_data.ip = rTable.getCurrentNode().ip;
 	header.source_data.weight = rTable.getCurrentNode().weight;
 	IF_SERIAL_DEBUG(printf_P(PSTR("%lu:Sending join message (%s) \n\r"),rTable.getMillis(),header.toString()));
-	return write(header,rTable.getMac(0));
+	return write(header);
 }
 
 bool RF24Mesh::send_UpdateWeight()
@@ -576,22 +597,24 @@ bool RF24Mesh::send_UpdateWeight()
 	header.source_data.weight = rTable.getCurrentNode().weight;
 	header.prev_node = rTable.getShortestRouteNode().ip;
 	IF_SERIAL_DEBUG(printf_P(PSTR("%lu:Sending update weight (%s) \n\r"),rTable.getMillis(),header.toString()));
-	return write(header,rTable.getMac(0));
+	return write(header);
 }
 
 bool RF24Mesh::send_WelcomeMessage(T_IP toNode)
 {
 	unsigned long time = rTable.getMillis();
-	uint64_t payload;
-	memset(&payload,0,8);
-	memcpy(&payload,&time,4);
-	RF24NetworkHeader header(toNode, 'W',payload , rTable.getCurrentNode().ip);
+	uint8_t data[16];
+
+	memset(&data,0,sizeof(unsigned long));
+	memcpy(&data,&time,sizeof(unsigned long));
+
+	RF24NetworkHeader header(toNode, 'W',data , rTable.getCurrentNode().ip);
 	header.source_data.ip = rTable.getCurrentNode().ip;
 	header.source_data.weight = rTable.getCurrentNode().weight;
   
-  printf_P(PSTR("---------------------------------\n\r"));
-  IF_SERIAL_DEBUG(printf_P(PSTR("%lu: APP Sending Welcome Message (%s)...\n\r"),rTable.getMillis(),header.toString()));
-  return write(header,rTable.getMac(0)); //broadcast mac'ine gonder.
+	printf_P(PSTR("---------------------------------\n\r"));
+	IF_SERIAL_DEBUG(printf_P(PSTR("%lu: APP Sending Welcome Message (%s)...\n\r"),rTable.getMillis(),header.toString()));
+	return write(header); //broadcast mac'ine gonder.
 }
 
 /**
@@ -633,7 +656,6 @@ bool RF24Mesh::send_SensorData(uint8_t data[16])
   	  if(!rTable.removeUnreacheable(rTable.getShortestRouteNode()))//There are no neighbour nodes
   	  {
   		  setState(NJOINED);
-  		  //goker joinNetwork();
   		  return false;
   	  }
 
@@ -664,12 +686,14 @@ void RF24Mesh::handle_JoinMessage(RF24NetworkHeader& header)
 	  // If this message is from ourselves or the base, don't bother adding it to the active nodes.
 	  if ( header.from_node != rTable.getShortestRouteNode().ip )
 	  {
-		  IF_SERIAL_DEBUG(printf_P(PSTR("%lu: handle_J farkli node kaydet ve cevap ver\n\r"),rTable.getMillis()));
+
 		  send_WelcomeMessage(header.source_data.ip);
 
 	  }
 	  else //benim bagli oldugum node'dan join mesaji gelmis
 	  {
+
+		  IF_SERIAL_DEBUG(printf_P(PSTR("%lu: bagli oldugum node Join mesaji gonderdi. Demekki hattan dustum.**********\n\r"),rTable.getMillis()));
 		  setState(NJOINED);
 		  rTable.cleanTable();
 	  }
@@ -717,8 +741,9 @@ void RF24Mesh::handle_UpdateWeightMessage(RF24NetworkHeader& header)
 	  bool shortenedPath = rTable.addNearNode(header.source_data);
 	  if(shortenedPath)
 	  {
-		  send_UpdateWeight();
 		  setState(JOINED);
+		  last_join_time = millis();
+		  send_UpdateWeight();
 	  }
   }
 }
@@ -793,7 +818,7 @@ void RF24Mesh::handle_ForwardData(RF24NetworkHeader& header)
 	  }
 	  header.type = type;
  
-	  write(header, rTable.getMac(0));
+	  write(header);
   }
 
 }

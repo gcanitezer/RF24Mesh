@@ -28,6 +28,7 @@ private:
 	uint8_t shortestPath;
 	bool iAmMaster;
 	unsigned long millis_delta;
+	bool millis_delta_positive;
 public:
 	RoutingTable(void);
 	~RoutingTable(void);
@@ -55,6 +56,7 @@ public:
 	void setConnected(T_IP ip);
 	int8_t checkTable(T_IP ip);
 	T_MAC getMac(T_IP ip);
+	T_MAC getBroadcastMac();
 	T_MAC getShortestMac(T_IP ip);
 	void setMillis(uint8_t data[16]);
 	unsigned long getMillis();

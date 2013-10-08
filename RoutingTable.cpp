@@ -26,16 +26,31 @@ RoutingTable::~RoutingTable(void)
 
 void RoutingTable::setMillis(uint8_t data[16])
 {
-	unsigned long a;
-	memcpy(&a,&data, 4);
+	unsigned long a=0;
+	//memcpy(&a,&data, sizeof(unsigned long));
 	//unsigned long a =  data;
-	millis_delta = millis() - a;
+	a = data[3];
+	a=  (a << 8) + data[2];
+	a = (a << 8) + data[1];
+	a = (a << 8) + data[0];
 
-	printf_P(PSTR("SetMillis called: a:%lx delta:%lx \n\r"),a,millis_delta);
+	if(a > millis())
+	{
+		millis_delta = a - millis();
+		millis_delta_positive =  true;
+	}else
+	{
+		millis_delta = millis() - a;
+		millis_delta_positive =  false;
+	}
+	printf_P(PSTR("SetMillis called: sizeof unsigned long is %d a:%lx delta:%lx d0:%d d1:%d d2:%d d3:%d \n\r"),sizeof(unsigned long),a,millis_delta, data[0], data[1],data[2],data[3]);
 }
 unsigned long RoutingTable::getMillis()
 {
-	return millis() + millis_delta;
+	if(millis_delta_positive)
+		return millis() + millis_delta;
+	else
+		return millis() - millis_delta;
 }
 
 IP_MAC RoutingTable::getMasterNode()
@@ -187,7 +202,6 @@ IP_MAC RoutingTable::getShortestRouteNode()
 	IF_SERIAL_DEBUG(printf_P(PSTR("%lu: getShortestRouteNode \r\n"), millis()));
 	if(iAmMaster)
 	{
-		printf_P(PSTR("%lu: *********DONT CALLME********I AM MASTER********getShortestRouteNode \r\n"), millis());
 		return MASTER_SYNC_ADDRESS;
 	}
 	else 
@@ -266,6 +280,11 @@ void RoutingTable::setConnected(T_IP ip)
 //TODO setConnected
 }
 
+T_MAC RoutingTable::getBroadcastMac()
+{
+	return base_address + BROADCAST_ADDRESS.ip;
+}
+
 T_MAC RoutingTable::getMac(T_IP ip)
 {
 	T_MAC result=0;
@@ -285,7 +304,7 @@ T_MAC RoutingTable::getMac(T_IP ip)
 	if(result == 0)
 	   printf_P(PSTR("%lu: ----WARNING--- getMac called for IP: %u mac: %lu\n\r"), millis(),ip,result);
 */	
-	result = base_address;
+	result = base_address + ip;
 
 	return result;
 }
