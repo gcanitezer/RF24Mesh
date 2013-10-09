@@ -111,14 +111,11 @@ void RF24Mesh::updateNetworkTopology(void)
 {
 	if (!rTable.amImaster() && (isState(INIT) || isState(NJOINED)))
 	{
-		if (last_join_time == 0 || (millis() - last_join_time) > JOIN_DURATION) //bir dakika
-		{
 			setState(NJOINED);
 			joinNetwork();
 			setState(SENDJOIN);
 
 			IF_SERIAL_DEBUG(printf_P(PSTR("%lu: Join network called last_join_time: %lu \n\r"),rTable.getMillis(),last_join_time));
-		}
 	}
 	else if (!rTable.amImaster() && (isState(JOINED)))
 		{
@@ -247,12 +244,15 @@ void RF24Mesh::sendPackets()
 	  {
 		  if(write() == false)
 			  error_rate++;
+		  else
+			  error_rate = 0;
 	  }
 
 	  if (error_rate > 4)
 	  {
 		  setState(NJOINED);
 		  IF_SERIAL_DEBUG(printf_P(PSTR("%lu: Fazla gonderme hatasi oldugu icin network dustu\n\r"),rTable.getMillis()));
+		  error_rate = 0;
 	  }
 }
 
